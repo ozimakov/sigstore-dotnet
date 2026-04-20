@@ -1,0 +1,25 @@
+# Build
+[Bb]in/
+[Oo]bj/
+artifacts/
+*.user
+*.suo
+*.cache
+*.log
+TestResults/
+coverage/
+coverage.*
+
+# IDE / OS
+.vs/
+.idea/
+*.swp
+.DS_Store
+
+# Cursor / local tooling (do not commit)
+.cursor/
+*.canvas.tsx.bak
+
+# NuGet
+*.nupkg
+*.snupkg

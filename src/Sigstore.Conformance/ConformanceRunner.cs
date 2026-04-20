@@ -1,0 +1,177 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using Sigstore.Bundle;
+using Sigstore.Crypto;
+using Sigstore.Fulcio;
+using Sigstore.Rekor;
+using Sigstore.Time;
+using Sigstore.Tuf;
+using Sigstore.Verification;
+
+namespace Sigstore.Conformance;
+
+/// <summary>
+/// CLI entrypoint implementing the <c>sigstore-conformance</c> client-under-test protocol.
+/// See <see href="https://github.com/sigstore/sigstore-conformance/blob/main/docs/cli_protocol.md">cli_protocol.md</see>.
+/// </summary>
+public static class ConformanceRunner
+{
+    /// <summary>
+    /// CLI implementation invoked from <see cref="Program"/>.
+    /// </summary>
+    /// <param name="args">Raw arguments (excluding process name).</param>
+    /// <returns>Process exit code.</returns>
+    public static async Task<int> RunAsync(string[] args)
+    {
+        if (args.Length == 0)
+        {
+            await Console.Error.WriteLineAsync("usage: sigstore-dotnet <sign-bundle|verify-bundle> ...").ConfigureAwait(false);
+            return 2;
+        }
+
+        string command = args[0];
+        if (string.Equals(command, "sign-bundle", StringComparison.OrdinalIgnoreCase))
+        {
+            await Console.Error.WriteLineAsync("signing not yet implemented").ConfigureAwait(false);
+            return 1;
+        }
+
+        if (!string.Equals(command, "verify-bundle", StringComparison.OrdinalIgnoreCase))
+        {
+            await Console.Error.WriteLineAsync($"unknown command: {command}").ConfigureAwait(false);
+            return 2;
+        }
+
+        return await RunVerifyAsync(args.AsMemory(1)).ConfigureAwait(false);
+    }
+
+    private static async Task<int> RunVerifyAsync(ReadOnlyMemory<string> args)
+    {
+        bool staging = false;
+        string? bundlePath = null;
+        string? certificateIdentity = null;
+        string? certificateOidcIssuer = null;
+        string? keyPath = null;
+        string? trustedRootPath = null;
+        string? fileOrDigest = null;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            string a = args.Span[i];
+            if (string.Equals(a, "--staging", StringComparison.Ordinal))
+            {
+                staging = true;
+                continue;
+            }
+
+            if (string.Equals(a, "--bundle", StringComparison.Ordinal) && i + 1 < args.Length)
+            {
+                bundlePath = args.Span[++i];
+                continue;
+            }
+
+            if (string.Equals(a, "--certificate-identity", StringComparison.Ordinal) && i + 1 < args.Length)
+            {
+                certificateIdentity = args.Span[++i];
+                continue;
+            }
+
+            if (string.Equals(a, "--certificate-oidc-issuer", StringComparison.Ordinal) && i + 1 < args.Length)
+            {
+                certificateOidcIssuer = args.Span[++i];
+                continue;
+            }
+
+            if (string.Equals(a, "--key", StringComparison.Ordinal) && i + 1 < args.Length)
+            {
+                keyPath = args.Span[++i];
+                continue;
+            }
+
+            if (string.Equals(a, "--trusted-root", StringComparison.Ordinal) && i + 1 < args.Length)
+            {
+                trustedRootPath = args.Span[++i];
+                continue;
+            }
+
+            if (fileOrDigest is null)
+            {
+                fileOrDigest = a;
+            }
+        }
+
+        if (bundlePath is null || fileOrDigest is null)
+        {
+            await Console.Error.WriteLineAsync("verify-bundle requires --bundle and FILE_OR_DIGEST").ConfigureAwait(false);
+            return 2;
+        }
+
+        if (keyPath is not null)
+        {
+            await Console.Error.WriteLineAsync("verify-bundle with --key is not implemented in v0.1.").ConfigureAwait(false);
+            return 2;
+        }
+
+        if (certificateIdentity is null || certificateOidcIssuer is null)
+        {
+            await Console.Error.WriteLineAsync("verify-bundle requires --certificate-identity and --certificate-oidc-issuer for keyless bundles.").ConfigureAwait(false);
+            return 2;
+        }
+
+        _ = staging;
+
+        string bundleJson = await File.ReadAllTextAsync(bundlePath).ConfigureAwait(false);
+        ReadOnlyMemory<byte> artifact = await LoadArtifactOrDigestAsync(fileOrDigest).ConfigureAwait(false);
+
+        string? trustedRootJson = null;
+        if (trustedRootPath is not null)
+        {
+            trustedRootJson = await File.ReadAllTextAsync(trustedRootPath).ConfigureAwait(false);
+        }
+
+        VerificationPolicy policy = VerificationPolicy.ForExact(certificateOidcIssuer, certificateIdentity);
+
+        Verifier verifier = CreateVerifier();
+        try
+        {
+            VerificationResult result = await verifier.VerifyAsync(bundleJson, artifact, policy, trustedRootJson, CancellationToken.None).ConfigureAwait(false);
+            if (!result.IsSuccess)
+            {
+                return 1;
+            }
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message).ConfigureAwait(false);
+            return 1;
+        }
+    }
+
+    private static Verifier CreateVerifier()
+    {
+        HttpClient http = new HttpClient();
+        Verifier verifier = new Verifier(
+            new VerificationPipeline(
+                new BundleParser(),
+                new CertificateVerifier(),
+                new TransparencyLogVerifier(),
+                new SignatureVerifier(),
+                new DefaultSystemClock(),
+                NullLogger<VerificationPipeline>.Instance),
+            new TufClient(http, NullLogger<TufClient>.Instance),
+            NullLogger<Verifier>.Instance);
+        return verifier;
+    }
+
+    private static async Task<ReadOnlyMemory<byte>> LoadArtifactOrDigestAsync(string fileOrDigest)
+    {
+        if (fileOrDigest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) && fileOrDigest.Length == 7 + 64)
+        {
+            throw new InvalidOperationException("v0.1 verification requires a local artifact file path; digest-only inputs are not supported.");
+        }
+
+        byte[] bytes = await File.ReadAllBytesAsync(fileOrDigest).ConfigureAwait(false);
+        return bytes;
+    }
+}

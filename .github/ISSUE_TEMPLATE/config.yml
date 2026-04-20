@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/ozimakov/sigstore-dotnet/security/advisories/new
+    about: Please report security vulnerabilities through GitHub's private advisory system, not as a public issue.
+  - name: Question or discussion
+    url: https://github.com/ozimakov/sigstore-dotnet/discussions
+    about: Ask questions, share ideas, or start a conversation.

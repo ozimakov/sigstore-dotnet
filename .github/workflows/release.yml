@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build, test, and publish to NuGet
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.x
+            9.x
+            10.x
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${{ github.ref_name }}"
+          echo "VERSION=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore sigstore-dotnet.sln
+
+      - name: Build
+        run: >
+          dotnet build sigstore-dotnet.sln
+          --configuration Release
+          --no-restore
+          -p:Version=${{ steps.version.outputs.VERSION }}
+          --nologo
+
+      - name: Test
+        run: >
+          dotnet test sigstore-dotnet.sln
+          --configuration Release
+          --no-build
+          --nologo
+          --logger "console;verbosity=minimal"
+
+      - name: Pack
+        run: |
+          dotnet pack src/Sigstore/Sigstore.csproj \
+            --configuration Release \
+            --no-build \
+            -p:Version=${{ steps.version.outputs.VERSION }} \
+            --output ./nupkgs \
+            --nologo
+          dotnet pack src/Sigstore.Conformance/Sigstore.Conformance.csproj \
+            --configuration Release \
+            --no-build \
+            -p:Version=${{ steps.version.outputs.VERSION }} \
+            --output ./nupkgs \
+            --nologo
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ./nupkgs/*.nupkg
+
+      - name: Push to NuGet.org
+        run: >
+          dotnet nuget push ./nupkgs/*.nupkg
+          --api-key ${{ secrets.NUGET_API_KEY }}
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate

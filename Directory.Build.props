@@ -1,0 +1,19 @@
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12.0</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <Authors>Oleg Zimakov and Sigstore .NET contributors</Authors>
+    <Company>Sigstore .NET</Company>
+    <Copyright>Copyright © Sigstore .NET contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ozimakov/sigstore-dotnet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ozimakov/sigstore-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>sigstore;supply-chain;security;signing;verification</PackageTags>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>

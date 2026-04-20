@@ -81,6 +81,7 @@ jobs:
           API_KEY=$(curl -fsSL \
             -X POST \
             -H "Authorization: Bearer $OIDC_TOKEN" \
+            -H "Content-Length: 0" \
             "https://www.nuget.org/api/v1/trustedpublishing/get-token" | jq -r '.token')
           dotnet nuget push ./nupkgs/*.nupkg \
             --api-key "$API_KEY" \

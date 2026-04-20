@@ -2,7 +2,7 @@
 
 Pure managed .NET client library for verifying [Sigstore](https://www.sigstore.dev/) bundles.
 
-[![NuGet](https://img.shields.io/nuget/v/Sigstore?label=NuGet&color=004880)](https://www.nuget.org/packages/Sigstore)
+[![NuGet](https://img.shields.io/nuget/v/Sigstore.Net?label=NuGet&color=004880)](https://www.nuget.org/packages/Sigstore.Net)
 [![CI](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/ci.yml/badge.svg)](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/ci.yml)
 [![Conformance](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/conformance.yml/badge.svg)](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/conformance.yml)
 [![License](https://img.shields.io/github/license/ozimakov/sigstore-dotnet)](LICENSE)
@@ -27,7 +27,7 @@ Pure managed .NET client library for verifying [Sigstore](https://www.sigstore.d
 ## Installation
 
 ```
-dotnet add package Sigstore
+dotnet add package Sigstore.Net
 ```
 
 ## Quickstart
@@ -143,10 +143,10 @@ Inject `Verifier` directly; all dependencies are resolved automatically.
 | Managed key / KMS | ⏭ xfail (planned v0.3) |
 | Bundle signing | ⏭ xfail (planned v0.2) |
 
-The `Sigstore.Conformance` package provides the CLI tool used by the conformance suite. It is published as a [.NET global tool](https://learn.microsoft.com/en-us/dotnet/core/tools/global-tools):
+The `Sigstore.Net.Conformance` package provides the CLI tool used by the conformance suite. It is published as a [.NET global tool](https://learn.microsoft.com/en-us/dotnet/core/tools/global-tools):
 
 ```
-dotnet tool install --global Sigstore.Conformance
+dotnet tool install --global Sigstore.Net.Conformance
 ```
 
 ## Architecture

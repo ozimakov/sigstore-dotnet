@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - RFC 3161 countersignature support for certificate validity window validation
 - `services.AddSigstore()` dependency injection extension
 - Multi-target support for .NET 8, 9, and 10
-- `Sigstore.Conformance` — CLI tool implementing the [sigstore-conformance](https://github.com/sigstore/sigstore-conformance) test protocol, published as a .NET global tool
+- `Sigstore.Net.Conformance` — CLI tool implementing the [sigstore-conformance](https://github.com/sigstore/sigstore-conformance) test protocol, published as a .NET global tool
 
 [Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ozimakov/sigstore-dotnet/releases/tag/v0.1.0

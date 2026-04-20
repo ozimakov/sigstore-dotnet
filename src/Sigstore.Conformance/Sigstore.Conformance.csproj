@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Sigstore.Conformance</RootNamespace>
+    <PackageId>Sigstore.Net.Conformance</PackageId>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>sigstore-dotnet</ToolCommandName>
     <AssemblyName>sigstore-dotnet</AssemblyName>

@@ -9,7 +9,7 @@
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <PackageId>Sigstore</PackageId>
+    <PackageId>Sigstore.Net</PackageId>
     <Description>Pure managed .NET client library for verifying Sigstore bundles (Public Good Instance and compatible deployments).</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

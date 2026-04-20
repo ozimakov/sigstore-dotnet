@@ -73,14 +73,20 @@ jobs:
         with:
           subject-path: ./nupkgs/*.nupkg
 
-      - name: NuGet login
-        id: nuget-login
-        uses: NuGet/login@v1
-        with:
-          user: ozimakov
-
       - name: Push to NuGet.org
-        run: >
-          dotnet nuget push ./nupkgs/*.nupkg
-          --source https://api.nuget.org/v3/index.json
-          --skip-duplicate
+        run: |
+          OIDC_TOKEN=$(curl -fsSL \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https%3A%2F%2Fwww.nuget.org" \
+            | jq -r '.value')
+          API_KEY=$(curl -fsSL \
+            -X POST \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"username":"ozimakov","tokenType":"ApiKey"}' \
+            "https://www.nuget.org/api/v2/token" \
+            | jq -r '.apiKey')
+          dotnet nuget push ./nupkgs/*.nupkg \
+            --api-key "$API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

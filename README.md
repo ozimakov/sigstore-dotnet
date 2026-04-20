@@ -165,8 +165,12 @@ See [docs/architecture.md](docs/architecture.md) for a detailed walkthrough.
 | Version | Scope |
 |---------|-------|
 | **v0.1** *(current)* | Bundle verification, TUF trust bootstrap, Fulcio chain, Rekor inclusion proof, RFC 3161 timestamps |
-| **v0.2** | Bundle signing, DSSE attestations, OCI registry bundles |
-| **v0.3** | KMS / hardware key support, benchmarks, performance tuning |
+| **v0.2** | Keyless signing: OIDC identity → Fulcio certificate → sign → Rekor upload → bundle output |
+| **v0.3** | in-toto attestations, DSSE signing and verification |
+| **v0.4** | OCI artifact support — verify and sign OCI image references stored in registries |
+| **v0.5** | KMS and hardware key support (PKCS#11, Azure Key Vault, AWS KMS) |
+| **v0.6** | Trim/AOT compatibility, performance tuning, public API review and stabilization |
+| **v1.0** | Stable public API, full Sigstore client spec conformance |
 
 ## Contributing
 

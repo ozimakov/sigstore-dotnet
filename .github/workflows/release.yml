@@ -74,6 +74,7 @@ jobs:
           subject-path: ./nupkgs/*.nupkg
 
       - name: NuGet login
+        id: nuget-login
         uses: NuGet/login@v1
         with:
           user: ozimakov
@@ -81,6 +82,6 @@ jobs:
       - name: Push to NuGet.org
         run: >
           dotnet nuget push ./nupkgs/*.nupkg
-          --api-key "${{ env.NUGET_API_KEY }}"
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}"
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate

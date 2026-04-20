@@ -74,8 +74,15 @@ jobs:
           subject-path: ./nupkgs/*.nupkg
 
       - name: Push to NuGet.org
-        run: >
-          dotnet nuget push ./nupkgs/*.nupkg
-          --api-key ${{ secrets.NUGET_API_KEY }}
-          --source https://api.nuget.org/v3/index.json
-          --skip-duplicate
+        run: |
+          OIDC_TOKEN=$(curl -fsSL \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=nuget.org" | jq -r '.value')
+          API_KEY=$(curl -fsSL \
+            -X POST \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            "https://www.nuget.org/api/v1/trustedpublishing/get-token" | jq -r '.token')
+          dotnet nuget push ./nupkgs/*.nupkg \
+            --api-key "$API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

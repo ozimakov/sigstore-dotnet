@@ -1,6 +1,6 @@
 # sigstore-dotnet
 
-Pure managed .NET client library for verifying [Sigstore](https://www.sigstore.dev/) bundles.
+.NET client library for verifying [Sigstore](https://www.sigstore.dev/) bundles — built entirely on `System.Security.Cryptography`, with no native dependencies.
 
 [![NuGet](https://img.shields.io/nuget/v/Sigstore.Net?label=NuGet&color=004880)](https://www.nuget.org/packages/Sigstore.Net)
 [![CI](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/ci.yml/badge.svg)](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/ci.yml)
@@ -10,19 +10,25 @@ Pure managed .NET client library for verifying [Sigstore](https://www.sigstore.d
 
 > **Status: alpha (v0.1).** The public API may change before v1.0. Bundle verification is fully supported; signing is planned for v0.2.
 
+## Why this library?
+
+| | sigstore-dotnet | Other .NET clients |
+|---|---|---|
+| **Crypto backend** | `System.Security.Cryptography` only | BouncyCastle or `NSec.Cryptography` (native libsodium) |
+| **Native dependencies** | None | Platform-native binaries required |
+| **Target frameworks** | .NET 8, 9, and 10 | .NET 10 only |
+| **Regulated / air-gapped environments** | Yes — in-box BCL crypto, no external binaries | Restricted by native deps |
+| **Trim / AOT compatibility** | Planned | Varies |
+
+No BouncyCastle. No native binaries. No `unsafe` code. If your environment restricts third-party cryptographic dependencies or requires multi-TFM support, this library is designed for you.
+
 ## What is Sigstore?
 
 [Sigstore](https://www.sigstore.dev/) is an open-source project that makes software supply-chain signing and verification transparent, auditable, and accessible. Artifacts are signed with short-lived X.509 certificates issued by [Fulcio](https://github.com/sigstore/fulcio) — tied to an OIDC identity from GitHub Actions, Google, or Microsoft — and every signing event is recorded in the [Rekor](https://github.com/sigstore/rekor) transparency log, eliminating the need to manage long-lived private keys.
 
 ## About this library
 
-`sigstore-dotnet` is the .NET client for the [Sigstore Public Good Instance](https://docs.sigstore.dev/about/infrastructure/) and compatible deployments. It fills the gap where official Sigstore clients exist for Go, Java, Python, JavaScript, Ruby, and Rust — but not .NET.
-
-**Key properties:**
-
-- **Pure managed code** — built entirely on `System.Security.Cryptography` and `System.Net.Http`; no BouncyCastle or native crypto binaries, making it suitable for security-sensitive and regulated environments
-- **Verification-only** — v0.1 implements bundle verification; signing comes in v0.2
-- **Multi-target** — targets .NET 8, 9, and 10
+`sigstore-dotnet` is a .NET client for the [Sigstore Public Good Instance](https://docs.sigstore.dev/about/infrastructure/) and compatible deployments, targeting .NET 8, 9, and 10.
 
 ## Installation
 

@@ -2,6 +2,7 @@ using Sigstore.Oidc;
 
 namespace Sigstore.Tests.Signing;
 
+[Collection("OidcTokenProviderTests")]
 public sealed class GitHubActionsTokenProviderTests
 {
     [Fact]

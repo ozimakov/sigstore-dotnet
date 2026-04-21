@@ -8,6 +8,9 @@ public sealed record SignerIdentity
     /// <summary>
     /// Creates a signer identity snapshot.
     /// </summary>
+    /// <param name="oidcIssuer">OIDC issuer URI from Fulcio extensions.</param>
+    /// <param name="subject">Preferred subject material (token subject extension when present, otherwise SAN URI).</param>
+    /// <param name="subjectAlternativeNameUri">Primary URI from the SAN extension when present.</param>
     public SignerIdentity(string oidcIssuer, string subject, string? subjectAlternativeNameUri)
     {
         OidcIssuer = oidcIssuer;

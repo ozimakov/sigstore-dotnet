@@ -150,3 +150,51 @@ public sealed class SignatureVerificationException : SigstoreException
     {
     }
 }
+
+/// <summary>
+/// OIDC token could not be obtained or is invalid.
+/// </summary>
+public sealed class OidcTokenException : SigstoreException
+{
+    /// <inheritdoc />
+    public OidcTokenException(string message) : base(message) { }
+
+    /// <inheritdoc />
+    public OidcTokenException(string message, Exception innerException) : base(message, innerException) { }
+}
+
+/// <summary>
+/// Fulcio certificate authority rejected the CSR or the returned chain failed validation.
+/// </summary>
+public sealed class FulcioException : SigstoreException
+{
+    /// <inheritdoc />
+    public FulcioException(string message) : base(message) { }
+
+    /// <inheritdoc />
+    public FulcioException(string message, Exception innerException) : base(message, innerException) { }
+}
+
+/// <summary>
+/// Rekor transparency log rejected the entry or the inclusion promise signature is invalid.
+/// </summary>
+public sealed class RekorException : SigstoreException
+{
+    /// <inheritdoc />
+    public RekorException(string message) : base(message) { }
+
+    /// <inheritdoc />
+    public RekorException(string message, Exception innerException) : base(message, innerException) { }
+}
+
+/// <summary>
+/// Signing orchestration failure not covered by a more specific exception type.
+/// </summary>
+public sealed class SigningException : SigstoreException
+{
+    /// <inheritdoc />
+    public SigningException(string message) : base(message) { }
+
+    /// <inheritdoc />
+    public SigningException(string message, Exception innerException) : base(message, innerException) { }
+}

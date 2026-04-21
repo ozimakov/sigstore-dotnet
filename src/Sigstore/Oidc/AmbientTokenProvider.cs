@@ -14,6 +14,7 @@ public sealed class AmbientTokenProvider : IOidcTokenProvider
     /// <summary>Creates an ambient provider chain.</summary>
     public AmbientTokenProvider(HttpClient httpClient)
     {
+        ArgumentNullException.ThrowIfNull(httpClient);
         _providers =
         [
             new GitHubActionsTokenProvider(httpClient),

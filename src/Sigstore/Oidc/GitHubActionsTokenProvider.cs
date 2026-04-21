@@ -15,6 +15,7 @@ public sealed class GitHubActionsTokenProvider : IOidcTokenProvider
     /// <summary>Creates a provider backed by the given <paramref name="httpClient"/>.</summary>
     public GitHubActionsTokenProvider(HttpClient httpClient)
     {
+        ArgumentNullException.ThrowIfNull(httpClient);
         _httpClient = httpClient;
     }
 
@@ -45,13 +46,23 @@ public sealed class GitHubActionsTokenProvider : IOidcTokenProvider
         }
 
         string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        using JsonDocument doc = JsonDocument.Parse(json);
-        string? value = doc.RootElement.GetProperty("value").GetString();
-        if (string.IsNullOrEmpty(value))
+        try
         {
-            throw new OidcTokenException("GitHub Actions OIDC token response did not contain a 'value' field.");
+            using JsonDocument doc = JsonDocument.Parse(json);
+            string? value = doc.RootElement.GetProperty("value").GetString();
+            if (string.IsNullOrEmpty(value))
+            {
+                throw new OidcTokenException("GitHub Actions OIDC token response did not contain a 'value' field.");
+            }
+            return value;
         }
-
-        return value;
+        catch (System.Text.Json.JsonException ex)
+        {
+            throw new OidcTokenException("GitHub Actions OIDC token response is not valid JSON.", ex);
+        }
+        catch (System.Collections.Generic.KeyNotFoundException ex)
+        {
+            throw new OidcTokenException("GitHub Actions OIDC token response did not contain a 'value' field.", ex);
+        }
     }
 }

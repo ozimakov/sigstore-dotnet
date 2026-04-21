@@ -157,10 +157,16 @@ public sealed class SignatureVerificationException : SigstoreException
 public sealed class OidcTokenException : SigstoreException
 {
     /// <inheritdoc />
-    public OidcTokenException(string message) : base(message) { }
+    public OidcTokenException(string message)
+        : base(message)
+    {
+    }
 
     /// <inheritdoc />
-    public OidcTokenException(string message, Exception innerException) : base(message, innerException) { }
+    public OidcTokenException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }
 
 /// <summary>
@@ -169,10 +175,16 @@ public sealed class OidcTokenException : SigstoreException
 public sealed class FulcioException : SigstoreException
 {
     /// <inheritdoc />
-    public FulcioException(string message) : base(message) { }
+    public FulcioException(string message)
+        : base(message)
+    {
+    }
 
     /// <inheritdoc />
-    public FulcioException(string message, Exception innerException) : base(message, innerException) { }
+    public FulcioException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }
 
 /// <summary>
@@ -181,10 +193,16 @@ public sealed class FulcioException : SigstoreException
 public sealed class RekorException : SigstoreException
 {
     /// <inheritdoc />
-    public RekorException(string message) : base(message) { }
+    public RekorException(string message)
+        : base(message)
+    {
+    }
 
     /// <inheritdoc />
-    public RekorException(string message, Exception innerException) : base(message, innerException) { }
+    public RekorException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }
 
 /// <summary>
@@ -193,8 +211,14 @@ public sealed class RekorException : SigstoreException
 public sealed class SigningException : SigstoreException
 {
     /// <inheritdoc />
-    public SigningException(string message) : base(message) { }
+    public SigningException(string message)
+        : base(message)
+    {
+    }
 
     /// <inheritdoc />
-    public SigningException(string message, Exception innerException) : base(message, innerException) { }
+    public SigningException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }

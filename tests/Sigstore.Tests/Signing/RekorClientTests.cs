@@ -39,7 +39,7 @@ public sealed class RekorClientTests
 
     private static HttpClient CreateHttpClient(HttpStatusCode statusCode, string content)
     {
-        return new HttpClient(new FakeMessageHandler(statusCode, content));
+        return new HttpClient(new FakeHttpMessageHandler(statusCode, content));
     }
 
     private static X509Certificate2 CreateSelfSignedCert()
@@ -47,26 +47,5 @@ public sealed class RekorClientTests
         using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
         var req = new CertificateRequest("CN=test", key, System.Security.Cryptography.HashAlgorithmName.SHA256);
         return req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
-    }
-
-    private sealed class FakeMessageHandler : HttpMessageHandler
-    {
-        private readonly HttpStatusCode _statusCode;
-        private readonly string _content;
-
-        public FakeMessageHandler(HttpStatusCode statusCode, string content)
-        {
-            _statusCode = statusCode;
-            _content = content;
-        }
-
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(new HttpResponseMessage(_statusCode)
-            {
-                Content = new StringContent(_content)
-            });
-        }
     }
 }

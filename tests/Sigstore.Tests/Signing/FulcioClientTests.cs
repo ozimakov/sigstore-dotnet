@@ -36,27 +36,6 @@ public sealed class FulcioClientTests
 
     private static HttpClient CreateHttpClient(HttpStatusCode statusCode, string content)
     {
-        return new HttpClient(new FakeMessageHandler(statusCode, content));
-    }
-
-    private sealed class FakeMessageHandler : HttpMessageHandler
-    {
-        private readonly HttpStatusCode _statusCode;
-        private readonly string _content;
-
-        public FakeMessageHandler(HttpStatusCode statusCode, string content)
-        {
-            _statusCode = statusCode;
-            _content = content;
-        }
-
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(new HttpResponseMessage(_statusCode)
-            {
-                Content = new StringContent(_content)
-            });
-        }
+        return new HttpClient(new FakeHttpMessageHandler(statusCode, content));
     }
 }

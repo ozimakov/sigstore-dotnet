@@ -35,6 +35,10 @@ public sealed class RekorClient : IRekorClient
         X509Certificate2 leafCert,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(artifactDigest);
+        ArgumentNullException.ThrowIfNull(signature);
+        ArgumentNullException.ThrowIfNull(leafCert);
+
         string hexDigest = Convert.ToHexString(artifactDigest).ToLowerInvariant();
         string sigB64 = Convert.ToBase64String(signature);
         string certPem = Convert.ToBase64String(leafCert.RawData);
@@ -52,7 +56,7 @@ public sealed class RekorClient : IRekorClient
     }}
   }}
 }}";
-        return PostEntryAsync(body, cancellationToken);
+        return PostEntryAsync(body, "hashedrekord", "0.0.1", cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -61,6 +65,9 @@ public sealed class RekorClient : IRekorClient
         X509Certificate2 leafCert,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(envelopeJson);
+        ArgumentNullException.ThrowIfNull(leafCert);
+
         string envelopeB64 = Convert.ToBase64String(envelopeJson);
         string certPem = Convert.ToBase64String(leafCert.RawData);
 
@@ -74,10 +81,10 @@ public sealed class RekorClient : IRekorClient
     }}
   }}
 }}";
-        return PostEntryAsync(body, cancellationToken);
+        return PostEntryAsync(body, "dsse", "0.0.1", cancellationToken);
     }
 
-    private async Task<TransparencyLogEntry> PostEntryAsync(string bodyJson, CancellationToken cancellationToken)
+    private async Task<TransparencyLogEntry> PostEntryAsync(string bodyJson, string kind, string apiVersion, CancellationToken cancellationToken)
     {
         Uri endpoint = new Uri(_baseUrl, "api/v1/log/entries");
         using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, endpoint);
@@ -98,15 +105,16 @@ public sealed class RekorClient : IRekorClient
             if (!response.IsSuccessStatusCode)
             {
                 string errorBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                throw new RekorException($"Rekor returned HTTP {(int)response.StatusCode}: {errorBody}");
+                string truncated = errorBody.Length > 512 ? errorBody[..512] : errorBody;
+                throw new RekorException($"Rekor returned HTTP {(int)response.StatusCode}: {truncated}");
             }
 
             string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            return ParseTransparencyLogEntry(json);
+            return ParseTransparencyLogEntry(json, kind, apiVersion);
         }
     }
 
-    private static TransparencyLogEntry ParseTransparencyLogEntry(string json)
+    private static TransparencyLogEntry ParseTransparencyLogEntry(string json, string kind, string apiVersion)
     {
         // Response is {"<uuid>": {...entry fields...}}
         using JsonDocument doc = JsonDocument.Parse(json);
@@ -153,7 +161,7 @@ public sealed class RekorClient : IRekorClient
             LogIndex = logIndex,
             LogId = new Dev.Sigstore.Common.V1.LogId { KeyId = ByteString.CopyFrom(logIdBytes) },
             IntegratedTime = integratedTime,
-            KindVersion = new KindVersion { Kind = "hashedrekord", Version = "0.0.1" },
+            KindVersion = new KindVersion { Kind = kind, Version = apiVersion },
             CanonicalizedBody = ByteString.CopyFrom(bodyBytes),
             InclusionPromise = new InclusionPromise
             {

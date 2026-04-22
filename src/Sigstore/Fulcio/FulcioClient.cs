@@ -30,8 +30,15 @@ public sealed class FulcioClient : IFulcioClient
     public async Task<X509Certificate2Collection> GetSigningCertificateAsync(
         byte[] csrDer, string idToken, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(csrDer);
+        ArgumentNullException.ThrowIfNull(idToken);
+
         string csrBase64 = Convert.ToBase64String(csrDer);
-        string requestJson = $"{{\"credentials\":{{\"oidcIdentityToken\":\"{idToken}\"}},\"certificateSigningRequest\":{{\"content\":\"{csrBase64}\"}}}}";
+        string requestJson = JsonSerializer.Serialize(new
+        {
+            credentials = new { oidcIdentityToken = idToken },
+            certificateSigningRequest = new { content = csrBase64 }
+        });
 
         Uri endpoint = new Uri(_baseUrl, "fulcio.v2.CA/CreateSigningCertificate");
         using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, endpoint);
@@ -52,7 +59,8 @@ public sealed class FulcioClient : IFulcioClient
             if (!response.IsSuccessStatusCode)
             {
                 string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                throw new FulcioException($"Fulcio returned HTTP {(int)response.StatusCode}: {body}");
+                string truncated = body.Length > 512 ? body[..512] : body;
+                throw new FulcioException($"Fulcio returned HTTP {(int)response.StatusCode}: {truncated}");
             }
 
             string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);

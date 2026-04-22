@@ -24,8 +24,11 @@ public static class SignedNoteVerifier
             throw new TransparencyLogException("Step 6 (transparency log): signed note is missing signature separator.");
         }
 
-        string signedRegion = noteText.Substring(0, separator);
-        byte[] message = Encoding.UTF8.GetBytes(signedRegion);
+        // C2SP spec: signed message is the note body including the trailing newline.
+        // separator points to the first \n of the \n\n— separator, so +1 includes the trailing \n.
+        // Try with trailing newline first (C2SP spec), then without (some older Rekor checkpoints).
+        byte[] messageWithNewline = Encoding.UTF8.GetBytes(noteText.Substring(0, separator + 1));
+        byte[] messageWithoutNewline = Encoding.UTF8.GetBytes(noteText.Substring(0, separator));
 
         string[] tailLines = noteText.Substring(separator + 2).Split('\n', StringSplitOptions.RemoveEmptyEntries);
         if (tailLines.Length == 0)
@@ -46,11 +49,33 @@ public static class SignedNoteVerifier
         }
 
         string signatureBase64 = parts[^1];
-        byte[] signatureBytes = Convert.FromBase64String(signatureBase64);
+        byte[] signaturePayload = Convert.FromBase64String(signatureBase64);
+
+        // C2SP signed-note format: first 4 bytes are key hint, remaining bytes are the signature.
+        if (signaturePayload.Length <= 4)
+        {
+            throw new TransparencyLogException("Step 6 (transparency log): signed note signature is too short (must include 4-byte key hint + signature).");
+        }
+
+        byte[] signatureBytes = signaturePayload.AsSpan(4).ToArray();
 
         using ECDsa key = ECDsa.Create();
         key.ImportSubjectPublicKeyInfo(subjectPublicKeyInfoDer, out _);
-        if (!key.VerifyData(message, signatureBytes, HashAlgorithmName.SHA256))
+
+        // Try both signed region variants (with/without trailing \n) and both signature
+        // formats (DER/P1363) for maximum compatibility across Rekor versions.
+        bool verified = false;
+        foreach (byte[] message in new[] { messageWithNewline, messageWithoutNewline })
+        {
+            if (key.VerifyData(message, signatureBytes, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence) ||
+                key.VerifyData(message, signatureBytes, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
+            {
+                verified = true;
+                break;
+            }
+        }
+
+        if (!verified)
         {
             throw new TransparencyLogException("Step 6 (transparency log): ECDSA signature over signed note text failed verification.");
         }

@@ -26,7 +26,9 @@ public sealed class SignatureVerifier : ISignatureVerifier
                 throw new SignatureVerificationException("Step 8 (signature): ECDSA public key could not be loaded from the leaf certificate.");
             }
 
-            if (!ecdsa.VerifyData(artifact, signature, hashAlgorithm))
+            // Try DER format first (Sigstore default), fall back to IEEE P1363
+            if (!ecdsa.VerifyData(artifact, signature, hashAlgorithm, DSASignatureFormat.Rfc3279DerSequence) &&
+                !ecdsa.VerifyData(artifact, signature, hashAlgorithm, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
             {
                 throw new SignatureVerificationException("Step 8 (signature): ECDSA signature verification failed for the artifact.");
             }

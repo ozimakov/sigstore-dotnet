@@ -1,3 +1,4 @@
+using System.Formats.Asn1;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
@@ -242,6 +243,7 @@ public sealed class VerificationPipeline
             }
         }
 
+        // Debug info for timestamp failures
         throw new CertificateValidationException("Step 5 (validity window): neither Rekor integrated time nor verifiable RFC 3161 timestamps were available.");
     }
 
@@ -250,6 +252,29 @@ public sealed class VerificationPipeline
         signingTime = default;
         try
         {
+            // Try RFC 3161 timestamp token (TSTInfo.genTime).
+            // The data may be either a raw TimeStampToken (ContentInfo) or a
+            // TimeStampResp wrapping it. TryDecode expects the token only.
+            byte[] tsBytes = pkcs7.ToArray();
+            ReadOnlyMemory<byte> tokenData = new ReadOnlyMemory<byte>(tsBytes);
+
+            if (Rfc3161TimestampToken.TryDecode(tokenData, out Rfc3161TimestampToken? token, out _) && token is not null)
+            {
+                signingTime = token.TokenInfo.Timestamp;
+                return true;
+            }
+
+            // If that failed, try unwrapping a TimeStampResp envelope:
+            // SEQUENCE { SEQUENCE { INTEGER (status) }, ContentInfo (token) }
+            ReadOnlyMemory<byte> unwrapped = TryUnwrapTimestampResponse(tsBytes);
+            if (!unwrapped.IsEmpty &&
+                Rfc3161TimestampToken.TryDecode(unwrapped, out token, out _) && token is not null)
+            {
+                signingTime = token.TokenInfo.Timestamp;
+                return true;
+            }
+
+            // Fall back to PKCS#9 signingTime attribute in CMS
             SignedCms cms = new SignedCms();
             cms.Decode(pkcs7.ToArray());
             if (cms.SignerInfos.Count == 0)
@@ -281,6 +306,30 @@ public sealed class VerificationPipeline
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Unwraps an RFC 3161 TimeStampResp to extract the TimeStampToken (ContentInfo).
+    /// TimeStampResp ::= SEQUENCE { status PKIStatusInfo, timeStampToken ContentInfo OPTIONAL }
+    /// </summary>
+    private static ReadOnlyMemory<byte> TryUnwrapTimestampResponse(byte[] data)
+    {
+        try
+        {
+            AsnReader outer = new AsnReader(data, AsnEncodingRules.DER);
+            AsnReader seq = outer.ReadSequence();
+            // Skip the status SEQUENCE
+            seq.ReadSequence();
+            // The remaining data is the TimeStampToken (ContentInfo)
+            if (seq.HasData)
+            {
+                return seq.ReadEncodedValue().ToArray();
+            }
+        }
+        catch (CryptographicException) { }
+        catch (AsnContentException) { }
+
+        return ReadOnlyMemory<byte>.Empty;
     }
 
     private void VerifyArtifactCryptography(BundleProto model, X509Certificate2 leaf, ReadOnlyMemory<byte> artifact)

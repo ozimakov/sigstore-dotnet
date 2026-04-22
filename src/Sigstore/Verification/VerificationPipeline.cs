@@ -200,10 +200,17 @@ public sealed class VerificationPipeline
             throw new BundleParseException("Step 1 (bundle parse): transparency log entry is missing from the bundle.");
         }
 
-        return material.TlogEntries[0];
+        TransparencyLogEntry entry = material.TlogEntries[0];
+
+        if (entry.LogIndex < 0)
+        {
+            throw new BundleParseException("Step 1 (bundle parse): transparency log entry has a negative logIndex.");
+        }
+
+        return entry;
     }
 
-    private static void ValidateCertificateTiming(X509Certificate2 leaf, TransparencyLogEntry entry, BundleProto model)
+    private void ValidateCertificateTiming(X509Certificate2 leaf, TransparencyLogEntry entry, BundleProto model)
     {
         DateTimeOffset notBefore = new DateTimeOffset(leaf.NotBefore.ToUniversalTime());
         DateTimeOffset notAfter = new DateTimeOffset(leaf.NotAfter.ToUniversalTime());
@@ -211,6 +218,12 @@ public sealed class VerificationPipeline
         if (entry.IntegratedTime > 0)
         {
             DateTimeOffset integrated = DateTimeOffset.FromUnixTimeSeconds(entry.IntegratedTime).ToUniversalTime();
+            DateTimeOffset now = _systemClock.UtcNow;
+            if (integrated > now.AddMinutes(5))
+            {
+                throw new CertificateValidationException("Step 5 (validity window): Rekor integrated time is in the future.");
+            }
+
             if (integrated < notBefore || integrated > notAfter)
             {
                 throw new CertificateValidationException("Step 5 (validity window): Rekor integrated time is outside the leaf certificate validity period.");

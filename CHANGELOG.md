@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-04-21
+
+### Added
+
+- Keyless signing pipeline (`Signer`, `SigningPipeline`) — generates an ephemeral ECDSA P-256 key, obtains a short-lived Fulcio certificate via OIDC, signs the artifact, uploads a transparency log entry to Rekor, and returns a Sigstore bundle v0.3 JSON
+- `message_signature` and DSSE signing via `Signer.SignAsync` / `Signer.SignDsseAsync`
+- OIDC token providers: `GitHubActionsTokenProvider` (OIDC federation from GHA), `EnvVarTokenProvider` (`SIGSTORE_ID_TOKEN`), `AmbientTokenProvider` (auto-selects GHA → env-var), and `StaticTokenProvider` (tests / custom flows)
+- `SigstoreSigningOptions` — configure Fulcio URL, Rekor URL, OIDC audience, token provider, and HTTP timeout
+- `services.AddSigstoreSigning()` — one-call DI registration for the full signing + verification stack
+- `TransparencyLogVerifier` now accepts bundles with an inclusion promise (SET) only, without a full Merkle inclusion proof, per the Sigstore client specification
+- Signing exception types: `FulcioException`, `RekorException`, `OidcTokenException`
+
 ## [0.1.0] — 2026-04-19
 
 ### Added

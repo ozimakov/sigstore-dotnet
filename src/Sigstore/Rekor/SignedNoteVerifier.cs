@@ -1,3 +1,4 @@
+using System.Formats.Asn1;
 using System.Security.Cryptography;
 using System.Text;
 using Sigstore.Exceptions;
@@ -59,16 +60,12 @@ public static class SignedNoteVerifier
 
         byte[] signatureBytes = signaturePayload.AsSpan(4).ToArray();
 
-        using ECDsa key = ECDsa.Create();
-        key.ImportSubjectPublicKeyInfo(subjectPublicKeyInfoDer, out _);
-
-        // Try both signed region variants (with/without trailing \n) and both signature
-        // formats (DER/P1363) for maximum compatibility across Rekor versions.
+        // Determine key algorithm from the SPKI DER and verify accordingly.
+        // Try both signed region variants (with/without trailing \n) for compatibility.
         bool verified = false;
         foreach (byte[] message in new[] { messageWithNewline, messageWithoutNewline })
         {
-            if (key.VerifyData(message, signatureBytes, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence) ||
-                key.VerifyData(message, signatureBytes, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
+            if (TryVerifyWithSpki(subjectPublicKeyInfoDer, message, signatureBytes))
             {
                 verified = true;
                 break;
@@ -77,7 +74,49 @@ public static class SignedNoteVerifier
 
         if (!verified)
         {
-            throw new TransparencyLogException("Step 6 (transparency log): ECDSA signature over signed note text failed verification.");
+            throw new TransparencyLogException("Step 6 (transparency log): signature over signed note text failed verification.");
+        }
+    }
+
+    private static bool TryVerifyWithSpki(ReadOnlySpan<byte> spkiDer, byte[] message, byte[] signature)
+    {
+        // Detect key algorithm from the SPKI AlgorithmIdentifier OID
+        string algorithmOid = ExtractAlgorithmOid(spkiDer);
+
+        if (algorithmOid == "1.3.101.112") // Ed25519
+        {
+            // Ed25519 is not yet available as a standalone API in the .NET BCL.
+            // Tests requiring Ed25519 checkpoint verification (rekor2-*) should be
+            // marked as xfail until BCL Ed25519 support ships.
+            return false;
+        }
+
+        // Default: ECDSA (OID 1.2.840.10045.2.1 or similar)
+        try
+        {
+            using ECDsa key = ECDsa.Create();
+            key.ImportSubjectPublicKeyInfo(spkiDer, out _);
+            return key.VerifyData(message, signature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence) ||
+                   key.VerifyData(message, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
+    }
+
+    private static string ExtractAlgorithmOid(ReadOnlySpan<byte> spkiDer)
+    {
+        try
+        {
+            AsnReader reader = new AsnReader(spkiDer.ToArray(), AsnEncodingRules.DER);
+            AsnReader seq = reader.ReadSequence();
+            AsnReader algId = seq.ReadSequence();
+            return algId.ReadObjectIdentifier();
+        }
+        catch
+        {
+            return string.Empty;
         }
     }
 }

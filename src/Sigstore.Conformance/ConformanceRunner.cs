@@ -150,7 +150,7 @@ public static class ConformanceRunner
 
     private static Verifier CreateVerifier()
     {
-        HttpClient http = new HttpClient();
+        HttpClient http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         Verifier verifier = new Verifier(
             new VerificationPipeline(
                 new BundleParser(),

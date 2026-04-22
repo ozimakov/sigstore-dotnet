@@ -127,6 +127,10 @@ public static class TufCanonicalJson
 
     private static void WriteString(string text, StringBuilder sb)
     {
-        sb.Append(JsonEncodedText.Encode(text).ToString());
+        sb.Append('"');
+        // UnsafeRelaxedJsonEscaping matches Go/Python canonical JSON escaping
+        // (only escapes control chars and double-quotes, not /, <, >, etc.)
+        sb.Append(JsonEncodedText.Encode(text, System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping).ToString());
+        sb.Append('"');
     }
 }

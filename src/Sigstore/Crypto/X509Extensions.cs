@@ -60,6 +60,7 @@ public static class X509Extensions
 
     /// <summary>
     /// Collects URI values from the Subject Alternative Name extension.
+    /// Includes both standard URI SANs and Fulcio OtherName SANs (OID 1.3.6.1.4.1.57264.1.7).
     /// </summary>
     /// <param name="certificate">Certificate to inspect.</param>
     /// <returns>URIs present in the SAN extension.</returns>
@@ -73,7 +74,47 @@ public static class X509Extensions
                 continue;
             }
 
-            AsnEncodedData data = new AsnEncodedData(extension.Oid!, extension.RawData);
+            ParseSanExtension(extension.RawData, uris);
+        }
+
+        return uris;
+    }
+
+    private static void ParseSanExtension(byte[] rawData, List<string> uris)
+    {
+        try
+        {
+            // SubjectAlternativeName ::= SEQUENCE OF GeneralName
+            AsnReader sanReader = new AsnReader(rawData, AsnEncodingRules.DER);
+            AsnReader sequenceReader = sanReader.ReadSequence();
+
+            while (sequenceReader.HasData)
+            {
+                Asn1Tag tag = sequenceReader.PeekTag();
+
+                if (tag.TagClass == TagClass.ContextSpecific && tag.TagValue == 6)
+                {
+                    // [6] uniformResourceIdentifier — IA5String
+                    string uri = sequenceReader.ReadCharacterString(UniversalTagNumber.IA5String, tag);
+                    uris.Add(uri);
+                }
+                else if (tag.TagClass == TagClass.ContextSpecific && tag.TagValue == 0)
+                {
+                    // [0] otherName — SEQUENCE { type-id OID, value [0] EXPLICIT ANY }
+                    ReadOnlyMemory<byte> otherNameBytes = sequenceReader.ReadEncodedValue();
+                    TryParseOtherName(otherNameBytes, uris);
+                }
+                else
+                {
+                    // Skip other GeneralName types (rfc822Name, dNSName, etc.)
+                    sequenceReader.ReadEncodedValue();
+                }
+            }
+        }
+        catch (CryptographicException)
+        {
+            // Fallback: use Format() for SANs we can't parse
+            AsnEncodedData data = new AsnEncodedData("2.5.29.17", rawData);
             string formatted = data.Format(false);
             string[] parts = formatted.Split(new[] { '\n', '\r', ',' }, StringSplitOptions.RemoveEmptyEntries);
             for (int i = 0; i < parts.Length; i++)
@@ -85,8 +126,34 @@ public static class X509Extensions
                 }
             }
         }
+    }
 
-        return uris;
+    private static void TryParseOtherName(ReadOnlyMemory<byte> otherNameBytes, List<string> uris)
+    {
+        try
+        {
+            AsnReader otherNameReader = new AsnReader(otherNameBytes, AsnEncodingRules.DER);
+            AsnReader inner = otherNameReader.ReadSequence(new Asn1Tag(TagClass.ContextSpecific, 0, true));
+
+            // Read type-id OID
+            string oid = inner.ReadObjectIdentifier();
+            if (oid != FulcioOtherNameOid)
+            {
+                return;
+            }
+
+            // Read [0] EXPLICIT value
+            AsnReader valueReader = inner.ReadSequence(new Asn1Tag(TagClass.ContextSpecific, 0, true));
+            string value = valueReader.ReadCharacterString(UniversalTagNumber.UTF8String);
+            if (!string.IsNullOrEmpty(value))
+            {
+                uris.Add(value);
+            }
+        }
+        catch (CryptographicException)
+        {
+            // Not a parseable OtherName — skip
+        }
     }
 
     /// <summary>

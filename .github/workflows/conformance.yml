@@ -33,7 +33,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: conformance-results
+          name: conformance-results-${{ github.run_id }}
           path: |
             **/*conformance*
             **/pytest*.log

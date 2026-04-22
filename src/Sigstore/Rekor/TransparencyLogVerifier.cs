@@ -26,45 +26,53 @@ public sealed class TransparencyLogVerifier : ITransparencyLogVerifier
 
         byte[] spki = logInstance.PublicKey.RawBytes.ToByteArray();
         InclusionProof? proof = entry.InclusionProof;
-        if (proof is null)
+        bool hasInclusionProof = proof is not null;
+        bool hasInclusionPromise = entry.InclusionPromise is not null
+            && entry.InclusionPromise.SignedEntryTimestamp.Length > 0;
+
+        if (!hasInclusionProof && !hasInclusionPromise)
         {
-            throw new TransparencyLogException("Step 6 (transparency log): inclusion proof is missing.");
+            throw new TransparencyLogException(
+                "Step 6 (transparency log): bundle must contain either an inclusion proof or an inclusion promise (SET).");
         }
 
-        if (entry.CanonicalizedBody.Length == 0)
+        if (hasInclusionProof)
         {
-            throw new TransparencyLogException("Step 6 (transparency log): canonicalized_body is required to compute the Merkle leaf hash.");
+            if (entry.CanonicalizedBody.Length == 0)
+            {
+                throw new TransparencyLogException("Step 6 (transparency log): canonicalized_body is required to compute the Merkle leaf hash.");
+            }
+
+            byte[] leafHash = MerkleProof.HashLeaf(entry.CanonicalizedBody.Span);
+            byte[][] path = new byte[proof!.Hashes.Count][];
+            for (int i = 0; i < proof.Hashes.Count; i++)
+            {
+                path[i] = proof.Hashes[i].ToByteArray();
+            }
+
+            MerkleProof.VerifyInclusion(
+                leafHash,
+                proof.LogIndex,
+                proof.TreeSize,
+                path,
+                proof.RootHash.Span);
+
+            if (proof.Checkpoint is not null && !string.IsNullOrEmpty(proof.Checkpoint.Envelope))
+            {
+                string envelope = proof.Checkpoint.Envelope;
+                envelope = envelope.Replace("\r\n", "\n", StringComparison.Ordinal);
+                SignedNoteVerifier.VerifyEcdsaP256Sha256(envelope, spki);
+            }
         }
 
-        byte[] leafHash = MerkleProof.HashLeaf(entry.CanonicalizedBody.Span);
-        byte[][] path = new byte[proof.Hashes.Count][];
-        for (int i = 0; i < proof.Hashes.Count; i++)
+        if (hasInclusionPromise)
         {
-            path[i] = proof.Hashes[i].ToByteArray();
-        }
-
-        MerkleProof.VerifyInclusion(
-            leafHash,
-            proof.LogIndex,
-            proof.TreeSize,
-            path,
-            proof.RootHash.Span);
-
-        if (proof.Checkpoint is not null && !string.IsNullOrEmpty(proof.Checkpoint.Envelope))
-        {
-            string envelope = proof.Checkpoint.Envelope;
-            envelope = envelope.Replace("\r\n", "\n", StringComparison.Ordinal);
-            SignedNoteVerifier.VerifyEcdsaP256Sha256(envelope, spki);
-        }
-
-        if (entry.InclusionPromise is not null && entry.InclusionPromise.SignedEntryTimestamp.Length > 0)
-        {
-            string setText = Encoding.UTF8.GetString(entry.InclusionPromise.SignedEntryTimestamp.ToByteArray());
+            string setText = Encoding.UTF8.GetString(entry.InclusionPromise!.SignedEntryTimestamp.ToByteArray());
             setText = setText.Replace("\r\n", "\n", StringComparison.Ordinal);
             SignedNoteVerifier.VerifyEcdsaP256Sha256(setText, spki);
         }
 
-        auditTrail.Add("Step 6: Verified Rekor inclusion proof and signed note signatures.");
+        auditTrail.Add("Step 6: Verified Rekor inclusion proof and/or inclusion promise (SET).");
     }
 
     private static TransparencyLogInstance? SelectLogInstance(TransparencyLogEntry entry, TrustedRoot trustedRoot)

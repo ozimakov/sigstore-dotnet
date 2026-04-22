@@ -227,6 +227,7 @@ internal static class TufEcdsaP256Sha256
     {
         using ECDsa key = ECDsa.Create();
         key.ImportFromPem(pemPublicKey);
-        return key.VerifyData(canonicalUtf8, derSignature, HashAlgorithmName.SHA256);
+        // TUF signatures are DER-encoded (RFC 3279), not IEEE P1363
+        return key.VerifyData(canonicalUtf8, derSignature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
     }
 }

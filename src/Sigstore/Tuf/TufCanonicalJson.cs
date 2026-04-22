@@ -127,10 +127,26 @@ public static class TufCanonicalJson
 
     private static void WriteString(string text, StringBuilder sb)
     {
+        // securesystemslib canonical JSON only escapes \ and " in strings.
+        // All other characters (including control chars like newline, tab) are literal.
         sb.Append('"');
-        // UnsafeRelaxedJsonEscaping matches Go/Python canonical JSON escaping
-        // (only escapes control chars and double-quotes, not /, <, >, etc.)
-        sb.Append(JsonEncodedText.Encode(text, System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping).ToString());
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (c == '\\')
+            {
+                sb.Append("\\\\");
+            }
+            else if (c == '"')
+            {
+                sb.Append("\\\"");
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+
         sb.Append('"');
     }
 }

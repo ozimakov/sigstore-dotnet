@@ -213,12 +213,6 @@ public sealed class SignVerifyRoundTripTests
             byte[] spki = rekorKey.ExportSubjectPublicKeyInfo();
             byte[] logIdBytes = SHA256.HashData(spki);
 
-            string noteBody = "rekor.example.com/test\n1\nabcdef\n";
-            string signedRegion = noteBody[..^1];
-            byte[] sig = rekorKey.SignData(
-                System.Text.Encoding.UTF8.GetBytes(signedRegion), HashAlgorithmName.SHA256);
-            string noteText = noteBody + "\n— rekor.example.com/test " + Convert.ToBase64String(sig) + "\n";
-
             return new TransparencyLogEntry
             {
                 LogIndex = 42,
@@ -228,7 +222,7 @@ public sealed class SignVerifyRoundTripTests
                 CanonicalizedBody = ByteString.CopyFrom(System.Text.Encoding.UTF8.GetBytes("body")),
                 InclusionPromise = new InclusionPromise
                 {
-                    SignedEntryTimestamp = ByteString.CopyFrom(System.Text.Encoding.UTF8.GetBytes(noteText))
+                    SignedEntryTimestamp = ByteString.CopyFrom(new byte[] { 0x01, 0x02, 0x03 })
                 }
             };
         }

@@ -41,21 +41,25 @@ public sealed class RekorClient : IRekorClient
 
         string hexDigest = Convert.ToHexString(artifactDigest).ToLowerInvariant();
         string sigB64 = Convert.ToBase64String(signature);
-        string certPem = Convert.ToBase64String(leafCert.RawData);
+        string certPem = ConvertToPem(leafCert);
 
-        string body = $@"{{
-  ""kind"": ""hashedrekord"",
-  ""apiVersion"": ""0.0.1"",
-  ""spec"": {{
-    ""signature"": {{
-      ""content"": ""{sigB64}"",
-      ""publicKey"": {{""content"": ""{certPem}""}}
-    }},
-    ""data"": {{
-      ""hash"": {{""algorithm"": ""sha256"", ""value"": ""{hexDigest}""}}
-    }}
-  }}
-}}";
+        string body = JsonSerializer.Serialize(new
+        {
+            kind = "hashedrekord",
+            apiVersion = "0.0.1",
+            spec = new
+            {
+                signature = new
+                {
+                    content = sigB64,
+                    publicKey = new { content = certPem }
+                },
+                data = new
+                {
+                    hash = new { algorithm = "sha256", value = hexDigest }
+                }
+            }
+        });
         return PostEntryAsync(body, "hashedrekord", "0.0.1", cancellationToken);
     }
 
@@ -69,18 +73,21 @@ public sealed class RekorClient : IRekorClient
         ArgumentNullException.ThrowIfNull(leafCert);
 
         string envelopeB64 = Convert.ToBase64String(envelopeJson);
-        string certPem = Convert.ToBase64String(leafCert.RawData);
+        string certPem = ConvertToPem(leafCert);
 
-        string body = $@"{{
-  ""kind"": ""dsse"",
-  ""apiVersion"": ""0.0.1"",
-  ""spec"": {{
-    ""proposedContent"": {{
-      ""envelope"": ""{envelopeB64}"",
-      ""verifiers"": [""{certPem}""]
-    }}
-  }}
-}}";
+        string body = JsonSerializer.Serialize(new
+        {
+            kind = "dsse",
+            apiVersion = "0.0.1",
+            spec = new
+            {
+                proposedContent = new
+                {
+                    envelope = envelopeB64,
+                    verifiers = new[] { certPem }
+                }
+            }
+        });
         return PostEntryAsync(body, "dsse", "0.0.1", cancellationToken);
     }
 
@@ -115,6 +122,22 @@ public sealed class RekorClient : IRekorClient
     }
 
     private static TransparencyLogEntry ParseTransparencyLogEntry(string json, string kind, string apiVersion)
+    {
+        try
+        {
+            return ParseTransparencyLogEntryCore(json, kind, apiVersion);
+        }
+        catch (RekorException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or KeyNotFoundException or InvalidOperationException)
+        {
+            throw new RekorException("Failed to parse Rekor response: " + ex.Message, ex);
+        }
+    }
+
+    private static TransparencyLogEntry ParseTransparencyLogEntryCore(string json, string kind, string apiVersion)
     {
         // Response is {"<uuid>": {...entry fields...}}
         using JsonDocument doc = JsonDocument.Parse(json);
@@ -168,5 +191,12 @@ public sealed class RekorClient : IRekorClient
                 SignedEntryTimestamp = ByteString.CopyFrom(setBytes)
             }
         };
+    }
+
+    private static string ConvertToPem(X509Certificate2 cert)
+    {
+        return "-----BEGIN CERTIFICATE-----\n"
+            + Convert.ToBase64String(cert.RawData)
+            + "\n-----END CERTIFICATE-----\n";
     }
 }

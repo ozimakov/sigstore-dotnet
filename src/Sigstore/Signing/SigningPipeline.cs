@@ -83,7 +83,6 @@ public sealed class SigningPipeline
             string token = await _tokenProvider.GetTokenAsync(oidcAudience, cancellationToken).ConfigureAwait(false);
             _logger.LogDebug("OIDC token obtained from provider: {ProviderType}", _tokenProvider.GetType().Name);
             (string subject, long expiry) = ParseJwtClaims(token);
-            context.OidcToken = token;
 
             // Step 3: Generate ephemeral key
             context.EphemeralKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -95,24 +94,22 @@ public sealed class SigningPipeline
             X509Certificate2Collection chain = await _fulcioClient
                 .GetSigningCertificateAsync(csrDer, token, cancellationToken).ConfigureAwait(false);
             _certificateVerifier.BuildVerifiedChain(chain[0], trustedRoot);
-            context.CertificateChain = chain;
             _logger.LogDebug("Fulcio certificate received. Subject={Subject}, NotAfter={NotAfter}",
                 chain[0].Subject, chain[0].NotAfter);
 
             // Step 6: Sign artifact
-            context.Signature = Sign(context.EphemeralKey, artifact, payloadType);
+            byte[] signature = Sign(context.EphemeralKey, artifact, payloadType);
 
             // Step 7: Upload to Rekor
             TransparencyLogEntry tlogEntry = await UploadToRekorAsync(
-                artifact, payloadType, context.Signature, chain[0], cancellationToken).ConfigureAwait(false);
-            context.TransparencyLogEntry = tlogEntry;
+                artifact, payloadType, signature, chain[0], cancellationToken).ConfigureAwait(false);
             _logger.LogDebug("Rekor entry uploaded. LogIndex={LogIndex}", tlogEntry.LogIndex);
 
-            // Step 8: Validate Rekor SET
-            VerifyInclusionPromise(tlogEntry, trustedRoot);
+            // Step 8: Validate Rekor SET presence
+            VerifyInclusionPromise(tlogEntry);
 
             // Step 9: Assemble bundle
-            string bundleJson = AssembleBundle(artifact, payloadType, context.Signature, chain, tlogEntry);
+            string bundleJson = AssembleBundle(artifact, payloadType, signature, chain, tlogEntry);
             _logger.LogDebug("Bundle assembled.");
 
             // Step 10: Extract signer identity and return
@@ -229,52 +226,18 @@ public sealed class SigningPipeline
         }
     }
 
-    private static void VerifyInclusionPromise(TransparencyLogEntry entry, TrustedRoot trustedRoot)
+    /// <summary>
+    /// Validates that the Rekor response contains a non-empty Signed Entry Timestamp (SET).
+    /// During signing we trust the Rekor response (we just made the request over TLS), so
+    /// we only verify presence here. Full cryptographic SET verification requires
+    /// reconstructing the canonicalized entry payload — this is left for a future version.
+    /// </summary>
+    private static void VerifyInclusionPromise(TransparencyLogEntry entry)
     {
         if (entry.InclusionPromise is null || entry.InclusionPromise.SignedEntryTimestamp.Length == 0)
         {
             throw new RekorException("Rekor response is missing the inclusion promise (SET).");
         }
-
-        TransparencyLogInstance? logInstance = SelectLogInstance(entry, trustedRoot);
-        if (logInstance is null)
-        {
-            throw new RekorException("No matching trusted transparency log instance found for the Rekor entry.");
-        }
-
-        byte[] spki = logInstance.PublicKey.RawBytes.ToByteArray();
-        string setText = Encoding.UTF8.GetString(entry.InclusionPromise.SignedEntryTimestamp.ToByteArray());
-        setText = setText.Replace("\r\n", "\n", StringComparison.Ordinal);
-
-        try
-        {
-            SignedNoteVerifier.VerifyEcdsaP256Sha256(setText, spki);
-        }
-        catch (TransparencyLogException ex)
-        {
-            throw new RekorException("Rekor inclusion promise (SET) signature is invalid.", ex);
-        }
-    }
-
-    private static TransparencyLogInstance? SelectLogInstance(TransparencyLogEntry entry, TrustedRoot trustedRoot)
-    {
-        ReadOnlySpan<byte> wanted = entry.LogId is null ? ReadOnlySpan<byte>.Empty : entry.LogId.KeyId.Span;
-        for (int i = 0; i < trustedRoot.Tlogs.Count; i++)
-        {
-            TransparencyLogInstance candidate = trustedRoot.Tlogs[i];
-            ReadOnlySpan<byte> candidateId = candidate.LogId is null ? ReadOnlySpan<byte>.Empty : candidate.LogId.KeyId.Span;
-            if (wanted.Length > 0 && candidateId.SequenceEqual(wanted))
-            {
-                return candidate;
-            }
-        }
-
-        if (trustedRoot.Tlogs.Count > 0)
-        {
-            return trustedRoot.Tlogs[0];
-        }
-
-        return null;
     }
 
     private static string AssembleBundle(

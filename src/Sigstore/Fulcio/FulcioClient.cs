@@ -70,6 +70,22 @@ public sealed class FulcioClient : IFulcioClient
 
     private static X509Certificate2Collection ParseCertificateChain(string json)
     {
+        try
+        {
+            return ParseCertificateChainCore(json);
+        }
+        catch (FulcioException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or KeyNotFoundException or InvalidOperationException)
+        {
+            throw new FulcioException("Failed to parse Fulcio certificate response: " + ex.Message, ex);
+        }
+    }
+
+    private static X509Certificate2Collection ParseCertificateChainCore(string json)
+    {
         using JsonDocument doc = JsonDocument.Parse(json);
         JsonElement root = doc.RootElement;
 

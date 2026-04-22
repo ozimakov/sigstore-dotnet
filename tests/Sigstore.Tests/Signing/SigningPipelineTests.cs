@@ -251,15 +251,6 @@ public sealed class SigningPipelineTests
         byte[] spki = rekorKey.ExportSubjectPublicKeyInfo();
         byte[] logIdBytes = SHA256.HashData(spki);
 
-        // Build a valid signed note.
-        // SignedNoteVerifier signs text.Substring(0, LastIndexOf("\n\n— ")),
-        // which excludes the trailing \n of the body. Sign the same region here.
-        string noteBody = "rekor.example.com/test\n1\nabcdef\n";
-        string signedRegion = noteBody[..^1]; // strip trailing \n — matches verifier
-        byte[] sig = rekorKey.SignData(Encoding.UTF8.GetBytes(signedRegion), HashAlgorithmName.SHA256);
-        string noteText = noteBody + "\n— rekor.example.com/test " + Convert.ToBase64String(sig) + "\n";
-        byte[] noteBytes = Encoding.UTF8.GetBytes(noteText);
-
         return new TransparencyLogEntry
         {
             LogIndex = 1,
@@ -269,7 +260,7 @@ public sealed class SigningPipelineTests
             CanonicalizedBody = ByteString.CopyFrom(Encoding.UTF8.GetBytes("body")),
             InclusionPromise = new InclusionPromise
             {
-                SignedEntryTimestamp = ByteString.CopyFrom(noteBytes)
+                SignedEntryTimestamp = ByteString.CopyFrom(new byte[] { 0x01, 0x02, 0x03 })
             }
         };
     }

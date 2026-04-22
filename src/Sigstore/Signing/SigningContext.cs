@@ -1,11 +1,11 @@
 using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
-using Dev.Sigstore.Rekor.V1;
 
 namespace Sigstore.Signing;
 
 /// <summary>
 /// Mutable context threaded through the signing pipeline. Never exposed publicly.
+/// Only holds state that must survive across pipeline steps (the ephemeral key
+/// for disposal in the finally block).
 /// </summary>
 internal sealed class SigningContext
 {
@@ -17,11 +17,5 @@ internal sealed class SigningContext
 
     // Resolved during pipeline
 
-    public string? TrustedRootJson { get; set; }
-    public string? OidcAudience { get; set; }
-    public string? OidcToken { get; set; }
     public ECDsa? EphemeralKey { get; set; }
-    public X509Certificate2Collection? CertificateChain { get; set; }
-    public byte[]? Signature { get; set; }
-    public TransparencyLogEntry? TransparencyLogEntry { get; set; }
 }

@@ -1,6 +1,9 @@
 using System.Formats.Asn1;
 using System.Security.Cryptography;
 using System.Text;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
+using Org.BouncyCastle.Security;
 using Sigstore.Exceptions;
 
 namespace Sigstore.Rekor;
@@ -85,10 +88,18 @@ public static class SignedNoteVerifier
 
         if (algorithmOid == "1.3.101.112") // Ed25519
         {
-            // Ed25519 is not yet available as a standalone API in the .NET BCL.
-            // Tests requiring Ed25519 checkpoint verification (rekor2-*) should be
-            // marked as xfail until BCL Ed25519 support ships.
-            return false;
+            try
+            {
+                Ed25519PublicKeyParameters pubKey = (Ed25519PublicKeyParameters)PublicKeyFactory.CreateKey(spkiDer.ToArray());
+                Ed25519Signer signer = new Ed25519Signer();
+                signer.Init(false, pubKey);
+                signer.BlockUpdate(message, 0, message.Length);
+                return signer.VerifySignature(signature);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         // Default: ECDSA (OID 1.2.840.10045.2.1 or similar)

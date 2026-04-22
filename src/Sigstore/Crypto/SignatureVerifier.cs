@@ -1,11 +1,14 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
+using Org.BouncyCastle.Security;
 using Sigstore.Exceptions;
 
 namespace Sigstore.Crypto;
 
 /// <summary>
-/// Verifies artifact signatures using only <see cref="System.Security.Cryptography"/> primitives.
+/// Verifies artifact signatures using BCL primitives and BouncyCastle (for Ed25519).
 /// Signature algorithms are implied by the leaf certificate public key (PKIX).
 /// </summary>
 public sealed class SignatureVerifier : ISignatureVerifier
@@ -54,6 +57,32 @@ public sealed class SignatureVerifier : ISignatureVerifier
             }
 
             return;
+        }
+
+        if (publicKey.Oid?.Value == "1.3.101.112") // Ed25519
+        {
+            try
+            {
+                byte[] spki = leafCertificate.PublicKey.ExportSubjectPublicKeyInfo();
+                Ed25519PublicKeyParameters pubKey = (Ed25519PublicKeyParameters)PublicKeyFactory.CreateKey(spki);
+                Ed25519Signer signer = new Ed25519Signer();
+                signer.Init(false, pubKey);
+                signer.BlockUpdate(artifact.ToArray(), 0, artifact.Length);
+                if (!signer.VerifySignature(signature.ToArray()))
+                {
+                    throw new SignatureVerificationException("Step 8 (signature): Ed25519 signature verification failed for the artifact.");
+                }
+
+                return;
+            }
+            catch (SignatureVerificationException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new SignatureVerificationException("Step 8 (signature): Ed25519 verification error: " + ex.Message, ex);
+            }
         }
 
         throw new SignatureVerificationException($"Step 8 (signature): unsupported public key algorithm OID '{publicKey.Oid?.Value}'.");

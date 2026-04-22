@@ -366,7 +366,7 @@ public sealed class VerificationPipeline
         _signatureVerifier.VerifyArtifactSignature(leaf, artifact, sigBytes, hash);
     }
 
-    private static void VerifyDsseEnvelope(Envelope envelope, X509Certificate2 leaf, ReadOnlySpan<byte> expectedArtifact)
+    private void VerifyDsseEnvelope(Envelope envelope, X509Certificate2 leaf, ReadOnlySpan<byte> expectedArtifact)
     {
         if (envelope.Signatures.Count != 1)
         {
@@ -375,29 +375,7 @@ public sealed class VerificationPipeline
 
         byte[] pae = Dsse.PreAuthenticationEncoding(envelope.PayloadType, envelope.Payload.Span);
         byte[] sig = envelope.Signatures[0].Sig.ToByteArray();
-        using ECDsa? ecdsa = leaf.GetECDsaPublicKey();
-        using RSA? rsa = leaf.GetRSAPublicKey();
-        if (ecdsa is not null)
-        {
-            if (!ecdsa.VerifyData(pae, sig, HashAlgorithmName.SHA256))
-            {
-                throw new SignatureVerificationException("Step 8 (signature): ECDSA DSSE signature verification failed.");
-            }
-        }
-        else if (rsa is not null)
-        {
-            if (!rsa.VerifyData(pae, sig, HashAlgorithmName.SHA256, RSASignaturePadding.Pss))
-            {
-                if (!rsa.VerifyData(pae, sig, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1))
-                {
-                    throw new SignatureVerificationException("Step 8 (signature): RSA DSSE signature verification failed.");
-                }
-            }
-        }
-        else
-        {
-            throw new SignatureVerificationException("Step 8 (signature): unsupported public key for DSSE verification.");
-        }
+        _signatureVerifier.VerifyArtifactSignature(leaf, pae, sig, HashAlgorithmName.SHA256);
 
         if (!expectedArtifact.SequenceEqual(envelope.Payload.Span))
         {

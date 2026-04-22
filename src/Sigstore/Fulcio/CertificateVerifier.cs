@@ -16,7 +16,12 @@ public sealed class CertificateVerifier : ICertificateVerifier
     {
         using X509Chain chain = new X509Chain();
         chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.AllowUnknownCertificateAuthority;
+        // IgnoreNotTimeValid: Sigstore certs are short-lived and typically expired at
+        // verification time. Temporal validity is checked separately using the Rekor
+        // integrated time or RFC 3161 timestamp (Step 5 of the verification pipeline).
+        chain.ChainPolicy.VerificationFlags =
+            X509VerificationFlags.AllowUnknownCertificateAuthority |
+            X509VerificationFlags.IgnoreNotTimeValid;
         chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
         chain.ChainPolicy.CustomTrustStore.Clear();
 

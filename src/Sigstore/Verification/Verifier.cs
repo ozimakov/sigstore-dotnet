@@ -1,4 +1,7 @@
+using System.Security.Cryptography;
+using Dev.Sigstore.Common.V1;
 using Dev.Sigstore.Trustroot.V1;
+using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Sigstore.Tuf;
 
@@ -71,5 +74,30 @@ public sealed class Verifier
 
         _logger.LogInformation("Starting Sigstore verification.");
         return await _pipeline.RunAsync(bundleJson, artifact, policy, trustedRoot, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verifies a Sigstore bundle using a caller-provided public key (managed-key mode).
+    /// Skips Fulcio certificate chain validation and identity policy enforcement.
+    /// </summary>
+    public async Task<VerificationResult> VerifyWithKeyAsync(
+        string bundleJson,
+        ReadOnlyMemory<byte> artifact,
+        string publicKeyPem,
+        string? trustedRootJson,
+        CancellationToken cancellationToken)
+    {
+        TrustedRoot trustedRoot;
+        if (trustedRootJson is not null)
+        {
+            trustedRoot = TrustedRootLoader.Parse(trustedRootJson);
+        }
+        else
+        {
+            trustedRoot = await _tufClient.FetchPublicGoodTrustedRootAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        _logger.LogInformation("Starting Sigstore managed-key verification.");
+        return await _pipeline.RunWithKeyAsync(bundleJson, artifact, publicKeyPem, trustedRoot, cancellationToken).ConfigureAwait(false);
     }
 }

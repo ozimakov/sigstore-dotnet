@@ -105,18 +105,6 @@ public static class ConformanceRunner
             return 2;
         }
 
-        if (keyPath is not null)
-        {
-            await Console.Error.WriteLineAsync("verify-bundle with --key is not implemented in v0.1.").ConfigureAwait(false);
-            return 2;
-        }
-
-        if (certificateIdentity is null || certificateOidcIssuer is null)
-        {
-            await Console.Error.WriteLineAsync("verify-bundle requires --certificate-identity and --certificate-oidc-issuer for keyless bundles.").ConfigureAwait(false);
-            return 2;
-        }
-
         _ = staging;
 
         string bundleJson = await File.ReadAllTextAsync(bundlePath).ConfigureAwait(false);
@@ -128,13 +116,34 @@ public static class ConformanceRunner
             trustedRootJson = await File.ReadAllTextAsync(trustedRootPath).ConfigureAwait(false);
         }
 
-        VerificationPolicy policy = VerificationPolicy.ForExact(certificateOidcIssuer, certificateIdentity);
-
         Verifier verifier = CreateVerifier();
         try
         {
-            VerificationResult result = await verifier.VerifyAsync(bundleJson, artifact, policy, trustedRootJson, CancellationToken.None).ConfigureAwait(false);
-            if (!result.IsSuccess)
+            if (keyPath is not null)
+            {
+                // Managed-key verification: skip Fulcio chain + identity policy
+                VerificationPolicy anyPolicy = VerificationPolicy.ForExact("*", "*");
+                string keyPem = await File.ReadAllTextAsync(keyPath).ConfigureAwait(false);
+                VerificationResult result = await verifier.VerifyWithKeyAsync(
+                    bundleJson, artifact, keyPem, trustedRootJson, CancellationToken.None).ConfigureAwait(false);
+                if (!result.IsSuccess)
+                {
+                    return 1;
+                }
+
+                return 0;
+            }
+
+            if (certificateIdentity is null || certificateOidcIssuer is null)
+            {
+                await Console.Error.WriteLineAsync("verify-bundle requires --certificate-identity and --certificate-oidc-issuer for keyless bundles.").ConfigureAwait(false);
+                return 2;
+            }
+
+            VerificationPolicy policy = VerificationPolicy.ForExact(certificateOidcIssuer, certificateIdentity);
+            VerificationResult keylessResult = await verifier.VerifyAsync(
+                bundleJson, artifact, policy, trustedRootJson, CancellationToken.None).ConfigureAwait(false);
+            if (!keylessResult.IsSuccess)
             {
                 return 1;
             }
@@ -168,7 +177,7 @@ public static class ConformanceRunner
     {
         if (fileOrDigest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) && fileOrDigest.Length == 7 + 64)
         {
-            throw new InvalidOperationException("v0.1 verification requires a local artifact file path; digest-only inputs are not supported.");
+            return Convert.FromHexString(fileOrDigest.AsSpan(7));
         }
 
         byte[] bytes = await File.ReadAllBytesAsync(fileOrDigest).ConfigureAwait(false);

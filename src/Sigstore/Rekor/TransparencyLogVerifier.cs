@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using Dev.Sigstore.Rekor.V1;
 using Dev.Sigstore.Trustroot.V1;
 using Sigstore.Exceptions;
@@ -60,6 +61,10 @@ public sealed class TransparencyLogVerifier : ITransparencyLogVerifier
             {
                 string envelope = proof.Checkpoint.Envelope;
                 envelope = envelope.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+                // Validate checkpoint body: root hash must match inclusion proof
+                ValidateCheckpointBody(envelope, proof.RootHash.Span, proof.TreeSize);
+
                 SignedNoteVerifier.VerifyEcdsaP256Sha256(envelope, spki);
             }
         }
@@ -72,6 +77,55 @@ public sealed class TransparencyLogVerifier : ITransparencyLogVerifier
         auditTrail.Add(hasInclusionProof
             ? "Step 6: Verified Rekor inclusion proof."
             : "Step 6: Accepted Rekor inclusion promise (SET) without cryptographic verification.");
+    }
+
+    /// <summary>
+    /// Parses the checkpoint body (origin, tree_size, root_hash) and validates
+    /// that the root hash matches the inclusion proof's root hash.
+    /// </summary>
+    private static void ValidateCheckpointBody(string envelope, ReadOnlySpan<byte> expectedRootHash, long expectedTreeSize)
+    {
+        // Checkpoint body is everything before the first \n\n separator
+        int sep = envelope.IndexOf("\n\n", StringComparison.Ordinal);
+        if (sep < 0)
+        {
+            return; // malformed checkpoint — let SignedNoteVerifier handle it
+        }
+
+        string body = envelope.Substring(0, sep);
+        string[] lines = body.Split('\n');
+        if (lines.Length < 3)
+        {
+            return; // not enough lines to parse
+        }
+
+        // Line 0: origin
+        // Line 1: tree size
+        // Line 2: root hash (base64)
+        if (!long.TryParse(lines[1], out long treeSize))
+        {
+            throw new TransparencyLogException("Step 6 (transparency log): checkpoint tree size is not a valid integer.");
+        }
+
+        byte[] rootHash;
+        try
+        {
+            rootHash = Convert.FromBase64String(lines[2]);
+        }
+        catch (FormatException)
+        {
+            throw new TransparencyLogException("Step 6 (transparency log): checkpoint root hash is not valid base64.");
+        }
+
+        if (!rootHash.AsSpan().SequenceEqual(expectedRootHash))
+        {
+            throw new TransparencyLogException("Step 6 (transparency log): checkpoint root hash does not match inclusion proof root hash.");
+        }
+
+        if (treeSize != expectedTreeSize)
+        {
+            throw new TransparencyLogException("Step 6 (transparency log): checkpoint tree size does not match inclusion proof tree size.");
+        }
     }
 
     private static TransparencyLogInstance? SelectLogInstance(TransparencyLogEntry entry, TrustedRoot trustedRoot)

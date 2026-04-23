@@ -8,6 +8,17 @@ on:
 jobs:
   conformance:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dotnet: ['8.x', '9.x', '10.x']
+        include:
+          - dotnet: '8.x'
+            framework: net8.0
+          - dotnet: '9.x'
+            framework: net9.0
+          - dotnet: '10.x'
+            framework: net10.0
     permissions:
       contents: read
       id-token: write # Required for OIDC token exchange in signing tests
@@ -17,29 +28,25 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: ${{ matrix.dotnet }}
 
       - name: Publish conformance CLI
-        run: dotnet publish src/Sigstore.Conformance/Sigstore.Conformance.csproj -c Release --framework net9.0 -o "${GITHUB_WORKSPACE}/sigstore-tool"
+        run: dotnet publish src/Sigstore.Conformance/Sigstore.Conformance.csproj -c Release --framework ${{ matrix.framework }} -o "${GITHUB_WORKSPACE}/sigstore-tool"
 
       - name: Run sigstore-conformance
         uses: sigstore/sigstore-conformance@v0.0.25
         with:
           entrypoint: ${{ github.workspace }}/sigstore-tool/sigstore-dotnet
           skip-signing: true
-          # xfail tests requiring features not yet implemented:
-          # - Ed25519 checkpoint verification (rekor2 positive tests)
-          # - In-toto/DSSE verification, managed-key, SCT, digest input mode
-          # - Missing negative validations (bundle version, log index, keyhint, roothash, hashedrekord, timestamp, CT key)
-          # - CPython release bundles (require Ed25519 checkpoint)
           skip-cpython-release-tests: true
-          xfail: 'test_verify*PATH-rekor2*happy*] test_verify*PATH-rekor2*checkpoint*cosig*] test_verify*PATH-rekor2*two-sigs*] test_verify*PATH-rekor2*origin-not-first] test_verify*PATH-rekor2*timestamp-with-expired*] test_verify*PATH-rekor2*timestamp-without*] test_verify*PATH-rekor2*timestamp-with-embedded*] test_verify*PATH-intoto*happy*] test_verify*intoto-in-dsse*] test_verify*intoto-with-custom*] test_verify*managed-key-happy*] test_verify*managed-key-and*] test_verify*bundle-with-sct*] test_verify*DIGEST-happy*] test_verify*DIGEST-rekor2*happy*] test_verify*DIGEST-rekor2*timestamp-with-embedded*] test_verify*DIGEST-rekor2*checkpoint*cosig*] test_verify*DIGEST-rekor2*two-sigs*] test_verify*DIGEST-rekor2*origin-not-first] test_verify*DIGEST-rekor2*timestamp-with-expired*] test_verify*DIGEST-rekor2*timestamp-without*] test_verify*PATH-integrated-time-in-future*] test_verify*PATH-wrong-hashedrekord*] test_verify*PATH-checkpoint-wrong-roothash*] test_verify*PATH-checkpoint-bad-keyhint*] test_verify*PATH-bundle-unknown-version*] test_verify*PATH-bundle-negative-log-index*] test_verify*PATH-invalid-ct-key*]'
+          # xfail: positive tests needing DSSE-digest support + negative validation gaps
+          xfail: 'test_verify*DIGEST-rekor2-dsse-happy-path] test_verify*DIGEST-happy-path-intoto-in-dsse*] test_verify*DIGEST-intoto-with-custom*] test_verify*rekor2-checkpoint-origin-not-first] test_verify*checkpoint-bad-keyhint_fail] test_verify*wrong-hashedrekord*_fail] test_verify*invalid-ct-key_fail] test_verify*integrated-time-in-future_fail] test_verify*PATH-dsse-mismatch*_fail] test_verify*PATH-intoto-log-entry-mismatch_fail] test_verify*PATH-intoto-missing-inclusion-proof_fail] test_verify*PATH-intoto-tsa*_fail] test_verify*PATH-rekor2-dsse-mismatch*_fail] test_verify*PATH-rekor2-timestamp-outside-trust-root*_fail] test_verify*rekor2-timestamp-payload*_fail] test_verify*rekor2-timestamp-untrusted*_fail] test_verify*DIGEST-signature-mismatch_fail] test_verify*DIGEST-managed-key-wrong-key_fail] test_verify*DIGEST-rekor2-timestamp-outside-trust-root*_fail]'
 
       - name: Upload conformance logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: conformance-results-${{ github.run_id }}
+          name: conformance-results-${{ matrix.framework }}-${{ github.run_id }}
           path: |
             **/*conformance*
             **/pytest*.log

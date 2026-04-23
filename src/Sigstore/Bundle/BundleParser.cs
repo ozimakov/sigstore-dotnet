@@ -21,13 +21,33 @@ public sealed class BundleParser : IBundleParser
     }
 
     /// <inheritdoc />
+    private static readonly HashSet<string> SupportedMediaTypes = new(StringComparer.Ordinal)
+    {
+        "application/vnd.dev.sigstore.bundle+json;version=0.1",
+        "application/vnd.dev.sigstore.bundle+json;version=0.2",
+        "application/vnd.dev.sigstore.bundle+json;version=0.3",
+        "application/vnd.dev.sigstore.bundle.v0.1+json",
+        "application/vnd.dev.sigstore.bundle.v0.2+json",
+        "application/vnd.dev.sigstore.bundle.v0.3+json",
+    };
+
     public SigstoreBundle Parse(string json)
     {
         try
         {
             BundleProto bundle = _parser.Parse<BundleProto>(json);
             string mediaType = bundle.MediaType ?? string.Empty;
+
+            if (!string.IsNullOrEmpty(mediaType) && !SupportedMediaTypes.Contains(mediaType))
+            {
+                throw new BundleParseException($"Step 1 (bundle parse): unsupported bundle media type '{mediaType}'.");
+            }
+
             return new SigstoreBundle(mediaType, bundle);
+        }
+        catch (BundleParseException)
+        {
+            throw;
         }
         catch (Exception ex) when (ex is InvalidProtocolBufferException or Google.Protobuf.InvalidJsonException)
         {

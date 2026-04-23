@@ -1,6 +1,6 @@
 # sigstore-dotnet
 
-.NET client library for verifying [Sigstore](https://www.sigstore.dev/) bundles. Built entirely on `System.Security.Cryptography` — no BouncyCastle, no native binaries, no `unsafe` code. Targets .NET 8, 9, and 10.
+Managed .NET client library for [Sigstore](https://www.sigstore.dev/) bundle signing and verification. Uses `System.Security.Cryptography` + [BouncyCastle](https://www.bouncycastle.org/csharp/) for Ed25519 — no native binaries, no `unsafe` code. Targets .NET 8, 9, and 10.
 
 [![NuGet](https://img.shields.io/nuget/v/Sigstore.Net?label=NuGet&color=004880)](https://www.nuget.org/packages/Sigstore.Net)
 [![CI](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/ci.yml/badge.svg)](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/ci.yml)
@@ -8,17 +8,31 @@
 [![License](https://img.shields.io/github/license/ozimakov/sigstore-dotnet)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4)](https://dotnet.microsoft.com)
 
-> **Status: alpha (v0.1).** The public API may change before v1.0. Bundle verification is fully supported; signing is planned for v0.2.
+> **Status: alpha (v0.3).** The public API may change before v1.0.
 
 ## What is Sigstore?
 
 [Sigstore](https://www.sigstore.dev/) is an open-source project that makes software supply-chain signing and verification transparent, auditable, and accessible. Artifacts are signed with short-lived X.509 certificates issued by [Fulcio](https://github.com/sigstore/fulcio) — tied to an OIDC identity from GitHub Actions, Google, or Microsoft — and every signing event is recorded in the [Rekor](https://github.com/sigstore/rekor) transparency log, eliminating the need to manage long-lived private keys.
 
-## About this library
+## Features
 
-`sigstore-dotnet` is a .NET client for the [Sigstore Public Good Instance](https://docs.sigstore.dev/about/infrastructure/) and compatible deployments. It relies solely on in-box BCL APIs (`System.Security.Cryptography`, `System.Net.Http`), making it suitable for security-sensitive, regulated, and air-gapped environments where third-party or native cryptographic dependencies are restricted.
-
-v0.1 implements bundle verification. Signing is planned for v0.2.
+| Feature | Status |
+|---------|--------|
+| **Bundle verification** — keyless (Fulcio + Rekor) | Supported |
+| **Bundle verification** — managed public key | Supported |
+| **Bundle signing** — keyless (OIDC + Fulcio + Rekor) | Supported |
+| **Bundle formats** — `message_signature` and DSSE | Supported |
+| **In-toto attestation** verification | Supported |
+| **Digest-only** verification (`sha256:<hex>`) | Supported |
+| **Ed25519** signatures (via BouncyCastle) | Supported |
+| **ECDSA P-256** and **RSA** signatures | Supported |
+| **TUF trust bootstrap** against the Public Good Instance | Supported |
+| **RFC 3161 timestamps** and Rekor integrated time | Supported |
+| **Dependency injection** — `AddSigstore()` / `AddSigstoreSigning()` | Supported |
+| **OIDC token providers** — GitHub Actions, env var, ambient | Supported |
+| Conformance test suite (3x matrix: net8/9/10) | 93 passed, 34 xfailed |
+| OCI image verification | Planned |
+| KMS integrations | Planned |
 
 ## Installation
 
@@ -26,7 +40,7 @@ v0.1 implements bundle verification. Signing is planned for v0.2.
 dotnet add package Sigstore.Net
 ```
 
-## Quickstart
+## Quickstart — verification
 
 ### With dependency injection (recommended)
 
@@ -36,7 +50,6 @@ builder.Services.AddSigstore();
 ```
 
 ```csharp
-// Inject Verifier wherever you need it
 public class MyService(Verifier verifier)
 {
     public async Task VerifyAsync(string bundleJson, byte[] artifact)
@@ -46,14 +59,24 @@ public class MyService(Verifier verifier)
             repository: "my-org/my-repo");
 
         VerificationResult result = await verifier.VerifyAsync(
-            bundleJson,
-            artifact,
-            policy,
-            CancellationToken.None);
+            bundleJson, artifact, policy, CancellationToken.None);
 
         Console.WriteLine($"Verified. Signed by: {result.Identity.Subject}");
     }
 }
+```
+
+### Managed-key verification
+
+Verify bundles signed with a standalone public key (no Fulcio certificate):
+
+```csharp
+string publicKeyPem = await File.ReadAllTextAsync("cosign.pub");
+
+VerificationResult result = await verifier.VerifyWithKeyAsync(
+    bundleJson, artifact, publicKeyPem,
+    trustedRootJson: trustedRoot,
+    CancellationToken.None);
 ```
 
 ### Without dependency injection
@@ -91,6 +114,38 @@ VerificationResult result = await verifier.VerifyAsync(
     bundleJson, artifact, policy, CancellationToken.None);
 ```
 
+## Quickstart — signing
+
+### With dependency injection
+
+```csharp
+builder.Services.AddSigstoreSigning(options =>
+{
+    options.TokenProvider = new StaticTokenProvider(myOidcToken);
+});
+```
+
+```csharp
+public class MyService(Signer signer)
+{
+    public async Task SignAsync(byte[] artifact)
+    {
+        SigningResult result = await signer.SignAsync(artifact, CancellationToken.None);
+        await File.WriteAllTextAsync("artifact.sigstore.json", result.BundleJson);
+        Console.WriteLine($"Signed by: {result.Identity.Subject}");
+    }
+}
+```
+
+### OIDC token providers
+
+| Provider | Source | Use case |
+|----------|--------|----------|
+| `GitHubActionsTokenProvider` | GHA OIDC federation | CI/CD pipelines |
+| `EnvVarTokenProvider` | `SIGSTORE_ID_TOKEN` env var | Local dev, scripts |
+| `AmbientTokenProvider` | Auto-detects GHA or env var | General purpose |
+| `StaticTokenProvider` | Caller-provided token string | Tests, custom flows |
+
 ## Verification policies
 
 | Method | Matches | Typical use case |
@@ -98,8 +153,6 @@ VerificationResult result = await verifier.VerifyAsync(
 | `VerificationPolicy.ForExact(issuer, subject)` | Exact OIDC issuer **and** subject string | Service account email, specific workflow ref |
 | `VerificationPolicy.ForRegexSubject(issuer, pattern)` | Exact issuer, regex on subject | Wildcard across branches or repos |
 | `VerificationPolicy.ForGitHubActions(issuer, repository)` | GitHub Actions token for a specific repo | CI/CD artifact provenance |
-
-See [docs/verification.md](docs/verification.md) for full details and failure modes.
 
 ## Trusted root
 
@@ -118,45 +171,51 @@ VerificationResult result = await verifier.VerifyAsync(
 
 ## Dependency injection
 
-`AddSigstore()` registers all verification services including an `HttpClient`-backed TUF client:
-
 ```csharp
-services.AddSigstore(); // registers Verifier, VerificationPipeline, TufClient, and supporting services
-```
+// Verification only
+services.AddSigstore();
 
-Inject `Verifier` directly; all dependencies are resolved automatically.
+// Verification + signing
+services.AddSigstoreSigning(options =>
+{
+    options.FulcioUrl = new Uri("https://fulcio.sigstore.dev/");
+    options.RekorUrl = new Uri("https://rekor.sigstore.dev/");
+    options.OidcAudience = "sigstore";
+    options.TokenProvider = new AmbientTokenProvider(httpClient);
+    options.HttpTimeout = TimeSpan.FromSeconds(30);
+});
+```
 
 ## Conformance
 
-`sigstore-dotnet` is tested against the official [sigstore-conformance](https://github.com/sigstore/sigstore-conformance) test suite. Tests run on a weekly schedule and on every manual trigger.
+`sigstore-dotnet` is tested against the official [sigstore-conformance](https://github.com/sigstore/sigstore-conformance) v0.0.25 test suite. Tests run as a 3x matrix across .NET 8, 9, and 10 on every push and weekly.
 
 | Test category | Status |
 |---------------|--------|
-| Artifact verification — `message_signature` | ✅ Pass |
-| Artifact verification — DSSE envelope | ✅ Pass |
-| Bundle v0.3 format | ✅ Pass |
-| in-toto attestations | ⏭ xfail (planned v0.2) |
-| Managed key / KMS | ⏭ xfail (planned v0.3) |
-| Bundle signing | ⏭ xfail (planned v0.2) |
-
-The `Sigstore.Net.Conformance` package provides the CLI tool used by the conformance suite. It is published as a [.NET global tool](https://learn.microsoft.com/en-us/dotnet/core/tools/global-tools):
-
-```
-dotnet tool install --global Sigstore.Net.Conformance
-```
+| Artifact verification — `message_signature` | Pass |
+| Artifact verification — DSSE envelope | Pass |
+| In-toto attestation verification | Pass |
+| Bundle v0.3 format | Pass |
+| Managed-key verification | Pass |
+| Ed25519 (rekor2) verification | Pass |
+| Digest-only verification | Pass |
+| Negative validation tests | 29 xfailed (validation gaps being closed iteratively) |
+| Bundle signing (conformance protocol) | Skipped (planned — `Signer` API already works) |
 
 ## Architecture
 
 The verification pipeline follows the [Sigstore client specification](https://github.com/sigstore/sigstore/blob/main/docs/client-spec.md):
 
-1. Parse bundle JSON (protobuf JSON encoding)
+1. Parse bundle JSON (protobuf JSON encoding) — reject unknown media types
 2. Bootstrap trust via TUF — fetch and verify `trusted_root.json`
-3. Build and verify Fulcio certificate chain against trusted CAs
-4. Enforce identity policy (issuer + subject)
-5. Validate certificate validity window against Rekor integrated time and RFC 3161 countersignatures
-6. Verify Rekor inclusion proof (Merkle path + signed tree-head checkpoint)
-7. Verify SET (signed entry timestamp) signature
-8. Verify artifact signature using the leaf certificate public key
+3. Build and verify Fulcio certificate chain against trusted CAs (or resolve managed key)
+4. Enforce identity policy (issuer + subject) — skipped for managed-key bundles
+5. Validate certificate validity window against Rekor integrated time and/or RFC 3161 timestamps
+6. Verify Rekor inclusion proof (Merkle path + signed checkpoint with Ed25519/ECDSA)
+7. Verify SET (signed entry timestamp) when no inclusion proof is available
+8. Verify artifact signature (ECDSA, RSA, Ed25519) using the leaf certificate or provided public key
+
+The signing pipeline generates an ephemeral ECDSA P-256 key, obtains a short-lived Fulcio certificate via OIDC, signs the artifact, uploads a transparency log entry to Rekor, and returns a Sigstore bundle v0.3 JSON.
 
 See [docs/architecture.md](docs/architecture.md) for a detailed walkthrough.
 
@@ -164,12 +223,12 @@ See [docs/architecture.md](docs/architecture.md) for a detailed walkthrough.
 
 | Version | Scope |
 |---------|-------|
-| **v0.1** *(current)* | Bundle verification, TUF trust bootstrap, Fulcio chain, Rekor inclusion proof, RFC 3161 timestamps |
-| **v0.2** | Keyless signing: OIDC identity → Fulcio certificate → sign → Rekor upload → bundle output |
-| **v0.3** | in-toto attestations, DSSE signing and verification |
-| **v0.4** | OCI artifact support — verify and sign OCI image references stored in registries |
-| **v0.5** | KMS and hardware key support (PKCS#11, Azure Key Vault, AWS KMS) |
-| **v0.6** | Trim/AOT compatibility, performance tuning, public API review and stabilization |
+| **v0.1** | Bundle verification, TUF trust bootstrap, Fulcio chain, Rekor inclusion proof, RFC 3161 timestamps |
+| **v0.2** | Keyless signing pipeline, OIDC token providers, DI extensions |
+| **v0.3** *(current)* | Ed25519 via BouncyCastle, managed-key verification, digest mode, in-toto attestations, negative validations |
+| **v0.4** | Conformance signing, remaining negative validations, CPython bundle tests |
+| **v0.5** | OCI artifact support |
+| **v0.6** | KMS and hardware key support (PKCS#11, Azure Key Vault, AWS KMS) |
 | **v1.0** | Stable public API, full Sigstore client spec conformance |
 
 ## Contributing

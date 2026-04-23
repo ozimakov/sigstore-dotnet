@@ -39,13 +39,9 @@ jobs:
           entrypoint: ${{ github.workspace }}/sigstore-tool/sigstore-dotnet
           skip-signing: true
           skip-cpython-release-tests: true
-          # Remaining xfails:
-          # - SCT verification not implemented
-          # - Key hint enforcement not strict
-          # - canonicalizedBody cross-check not implemented (wrong-hashedrekord)
-          # - Some DIGEST-mode DSSE/intoto tests (digest input for DSSE is ambiguous)
-          # - Some negative tests where our verifier doesn't detect the specific error
-          xfail: 'test_verify*bundle-with-sct*] test_verify*checkpoint-bad-keyhint*] test_verify*wrong-hashedrekord*] test_verify*invalid-ct-key*] test_verify*DIGEST*intoto*] test_verify*DIGEST*rekor2*dsse*] test_verify*DIGEST*rekor2*checkpoint-origin*] test_verify*dsse-mismatch*] test_verify*intoto-log-entry*] test_verify*intoto-missing-inclusion*] test_verify*intoto-tsa*] test_verify*DIGEST*signature-mismatch*] test_verify*DIGEST*managed-key-wrong*] test_verify*rekor2*timestamp-outside*] test_verify*rekor2*timestamp-untrusted*] test_verify*rekor2*timestamp-payload*] test_verify*integrated-time-in-future*] test_verify*rekor2*checkpoint-origin-not-first]'
+          # Remaining xfails — ONLY positive tests that still fail due to unimplemented features.
+          # Negative tests (_fail suffix) are NOT xfailed — they should correctly fail.
+          xfail: 'test_verify*PATH-bundle-with-sct-with-extensions] test_verify*DIGEST-bundle-with-sct-with-extensions] test_verify*PATH-rekor2-checkpoint-origin-not-first] test_verify*DIGEST-rekor2-checkpoint-origin-not-first]'
 
       - name: Upload conformance logs
         if: always()

@@ -59,9 +59,9 @@ Verification is implemented as an ordered pipeline with typed failures at each s
 
 Steps map to exceptions rooted at `SigstoreException` (for example `TrustedRootException`, `InclusionProofException`).
 
-## Pure managed cryptography
+## Managed cryptography
 
-Enterprise .NET deployments often disallow native cryptographic libraries in security-sensitive components. This project uses **only** `System.Security.Cryptography` (including PKCS#7 / `SignedCms` where needed for RFC 3161 material) and does not depend on BouncyCastle or other third-party crypto.
+Enterprise .NET deployments often disallow native/P-Invoke cryptographic libraries. This project uses `System.Security.Cryptography` for ECDSA and RSA, and **BouncyCastle.Cryptography** (pure managed .NET) for Ed25519 signature verification. No native or P/Invoke crypto dependencies are used.
 
 ## TUF trust bootstrap
 
@@ -75,9 +75,9 @@ The Public Good Instance trusted root is obtained from `tuf-repo-cdn.sigstore.de
 
 `Sigstore.Conformance` is packaged as a .NET global tool (`PackAsTool`) with command name `sigstore-dotnet`. It wires CLI flags to `Verifier` and is the binary exercised by `sigstore/sigstore-conformance`.
 
-## Deferred (v0.2+)
+## Deferred (v0.4+)
 
-- **Signing** (Fulcio, Rekor upload, bundle creation).
 - **KMS** integrations and key management.
 - **OCI** image verification helpers.
 - **Benchmarks** and extended test vectors.
+- **Conformance signing** — wire `sign-bundle` into the conformance runner.

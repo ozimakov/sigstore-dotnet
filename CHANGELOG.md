@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-04-23
+
+### Added
+
+- **Ed25519 signature verification** via BouncyCastle.Cryptography — supports Ed25519 signed-note checkpoints, artifact signatures, and DSSE envelopes
+- **Managed-key verification** — `VerifyWithKeyAsync` for bundles signed with a standalone public key (no Fulcio certificate required)
+- **Digest input mode** — verify bundles using `sha256:<hex>` pre-computed digests instead of raw artifact bytes
+- **In-toto statement verification** — DSSE bundles with `application/vnd.in-toto+json` payload type now match artifact digest against statement subjects
+
+### Fixed
+
+- Bundle media type validation — reject unknown media types
+- Negative `logIndex` rejection
+- Future `integratedTime` rejection (>5 min skew)
+- Checkpoint root hash and tree size cross-validated against inclusion proof
+- DSSE envelope signature verification consolidated to use `SignatureVerifier` (eliminates duplicated ECDSA/RSA logic)
+
+### Changed
+
+- Conformance tests now run as a 3x matrix (net8.0, net9.0, net10.0)
+- Crypto dependency policy updated: "managed .NET only — no native/P-Invoke crypto" (BouncyCastle is pure managed)
+
 ## [0.2.0] — 2026-04-21
 
 ### Added
@@ -32,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-target support for .NET 8, 9, and 10
 - `Sigstore.Net.Conformance` — CLI tool implementing the [sigstore-conformance](https://github.com/sigstore/sigstore-conformance) test protocol, published as a .NET global tool
 
-[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ozimakov/sigstore-dotnet/releases/tag/v0.1.0

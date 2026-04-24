@@ -1,8 +1,11 @@
+using Dev.Sigstore.Trustroot.V1;
 using Microsoft.Extensions.Logging.Abstractions;
 using Sigstore.Bundle;
 using Sigstore.Crypto;
 using Sigstore.Fulcio;
+using Sigstore.Oidc;
 using Sigstore.Rekor;
+using Sigstore.Signing;
 using Sigstore.Time;
 using Sigstore.Tuf;
 using Sigstore.Verification;
@@ -31,8 +34,7 @@ public static class ConformanceRunner
         string command = args[0];
         if (string.Equals(command, "sign-bundle", StringComparison.OrdinalIgnoreCase))
         {
-            await Console.Error.WriteLineAsync("signing not yet implemented").ConfigureAwait(false);
-            return 1;
+            return await RunSignAsync(args.AsMemory(1)).ConfigureAwait(false);
         }
 
         if (!string.Equals(command, "verify-bundle", StringComparison.OrdinalIgnoreCase))
@@ -148,6 +150,71 @@ public static class ConformanceRunner
                 return 1;
             }
 
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message).ConfigureAwait(false);
+            return 1;
+        }
+    }
+
+    private static async Task<int> RunSignAsync(ReadOnlyMemory<string> args)
+    {
+        string? identityToken = null;
+        string? bundleOutputPath = null;
+        string? artifactPath = null;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            string a = args.Span[i];
+            if (string.Equals(a, "--identity-token", StringComparison.Ordinal) && i + 1 < args.Length)
+            {
+                identityToken = args.Span[++i];
+                continue;
+            }
+
+            if (string.Equals(a, "--bundle", StringComparison.Ordinal) && i + 1 < args.Length)
+            {
+                bundleOutputPath = args.Span[++i];
+                continue;
+            }
+
+            if (a.StartsWith("--", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (artifactPath is null)
+            {
+                artifactPath = a;
+            }
+        }
+
+        if (identityToken is null || bundleOutputPath is null || artifactPath is null)
+        {
+            await Console.Error.WriteLineAsync("sign-bundle requires --identity-token, --bundle, and FILE").ConfigureAwait(false);
+            return 2;
+        }
+
+        byte[] artifact = await File.ReadAllBytesAsync(artifactPath).ConfigureAwait(false);
+
+        using HttpClient http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        TufClient tufClient = new TufClient(http, NullLogger<TufClient>.Instance);
+        TrustedRoot trustedRoot = await tufClient.FetchPublicGoodTrustedRootAsync(CancellationToken.None).ConfigureAwait(false);
+
+        SigningPipeline pipeline = new SigningPipeline(
+            new StaticTokenProvider(identityToken),
+            new FulcioClient(http, new Uri("https://fulcio.sigstore.dev/")),
+            new RekorClient(http, new Uri("https://rekor.sigstore.dev/")),
+            new CertificateVerifier(),
+            NullLogger<SigningPipeline>.Instance);
+
+        try
+        {
+            SigningResult result = await pipeline.RunAsync(
+                artifact, payloadType: null, "sigstore", trustedRoot, CancellationToken.None).ConfigureAwait(false);
+            await File.WriteAllTextAsync(bundleOutputPath, result.BundleJson).ConfigureAwait(false);
             return 0;
         }
         catch (Exception ex)

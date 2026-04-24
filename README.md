@@ -8,7 +8,7 @@ Managed .NET client library for [Sigstore](https://www.sigstore.dev/) bundle sig
 [![License](https://img.shields.io/github/license/ozimakov/sigstore-dotnet)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4)](https://dotnet.microsoft.com)
 
-> **Status: alpha (v0.3).** The public API may change before v1.0.
+> **Status: alpha (v0.4).** The public API may change before v1.0.
 
 ## What is Sigstore?
 
@@ -30,7 +30,7 @@ Managed .NET client library for [Sigstore](https://www.sigstore.dev/) bundle sig
 | **RFC 3161 timestamps** and Rekor integrated time | Supported |
 | **Dependency injection** — `AddSigstore()` / `AddSigstoreSigning()` | Supported |
 | **OIDC token providers** — GitHub Actions, env var, ambient | Supported |
-| Conformance test suite (3x matrix: net8/9/10) | 93 passed, 34 xfailed |
+| Conformance test suite (3x matrix: net8/9/10) | 104 passed, 28 xfailed |
 | OCI image verification | Planned |
 | KMS integrations | Planned |
 
@@ -199,8 +199,9 @@ services.AddSigstoreSigning(options =>
 | Managed-key verification | Pass |
 | Ed25519 (rekor2) verification | Pass |
 | Digest-only verification | Pass |
-| Negative validation tests | 29 xfailed (validation gaps being closed iteratively) |
-| Bundle signing (conformance protocol) | Skipped (planned — `Signer` API already works) |
+| Negative validation tests | 28 xfailed (validation gaps being closed iteratively) |
+| Bundle signing (conformance protocol) | Pass (`test_simple` — sign + verify against real infrastructure) |
+| canonicalizedBody cross-check | Pass (detects tlog entry / bundle content mismatch) |
 
 ## Architecture
 
@@ -225,10 +226,11 @@ See [docs/architecture.md](docs/architecture.md) for a detailed walkthrough.
 |---------|-------|
 | **v0.1** | Bundle verification, TUF trust bootstrap, Fulcio chain, Rekor inclusion proof, RFC 3161 timestamps |
 | **v0.2** | Keyless signing pipeline, OIDC token providers, DI extensions |
-| **v0.3** *(current)* | Ed25519 via BouncyCastle, managed-key verification, digest mode, in-toto attestations, negative validations |
-| **v0.4** | Conformance signing, remaining negative validations, CPython bundle tests |
-| **v0.5** | OCI artifact support |
-| **v0.6** | KMS and hardware key support (PKCS#11, Azure Key Vault, AWS KMS) |
+| **v0.3** | Ed25519 via BouncyCastle, managed-key verification, digest mode, in-toto attestations, negative validations |
+| **v0.4** *(current)* | Conformance signing against real Sigstore infrastructure, Fulcio v2 REST API, canonicalizedBody cross-check, bundle v0.3 leaf-only cert |
+| **v0.5** | Close remaining 28 xfailed negative validation tests, CPython release bundles, staging support |
+| **v0.6** | OCI artifact support |
+| **v0.7** | KMS and hardware key support (PKCS#11, Azure Key Vault, AWS KMS) |
 | **v1.0** | Stable public API, full Sigstore client spec conformance |
 
 ## Contributing

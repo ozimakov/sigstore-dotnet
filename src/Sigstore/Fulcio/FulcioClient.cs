@@ -165,11 +165,19 @@ public sealed class FulcioClient : IFulcioClient
             }
 
             int b64Start = beginIndex + beginMarker.Length;
-            string b64 = pem.Substring(b64Start, endIndex - b64Start)
-                .Replace("\n", string.Empty)
-                .Replace("\r", string.Empty)
-                .Trim();
-            byte[] der = Convert.FromBase64String(b64);
+            string raw = pem.Substring(b64Start, endIndex - b64Start);
+            // Strip all whitespace from PEM base64 content
+            StringBuilder b64Builder = new StringBuilder(raw.Length);
+            for (int i = 0; i < raw.Length; i++)
+            {
+                char c = raw[i];
+                if (c != '\n' && c != '\r' && c != ' ' && c != '\t')
+                {
+                    b64Builder.Append(c);
+                }
+            }
+
+            byte[] der = Convert.FromBase64String(b64Builder.ToString());
 #if NET9_0_OR_GREATER
             collection.Add(X509CertificateLoader.LoadCertificate(der));
 #else

@@ -70,16 +70,17 @@ public sealed class FulcioClient : IFulcioClient
 
             string responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
-            // Try PEM parsing first (we request application/pem-certificate-chain),
-            // fall back to JSON if the response isn't PEM.
+            // Fulcio may return JSON (signedCertificateEmbeddedSct/DetachedSct wrapper)
+            // or raw PEM (application/pem-certificate-chain). Detect by first character.
             try
             {
-                if (responseBody.Contains("-----BEGIN CERTIFICATE-----", StringComparison.Ordinal))
+                string trimmed = responseBody.TrimStart();
+                if (trimmed.Length > 0 && trimmed[0] == '{')
                 {
-                    return ParsePemCertificateChain(responseBody);
+                    return ParseCertificateChain(responseBody);
                 }
 
-                return ParseCertificateChain(responseBody);
+                return ParsePemCertificateChain(responseBody);
             }
             catch (Exception ex) when (ex is not FulcioException)
             {
@@ -129,13 +130,28 @@ public sealed class FulcioClient : IFulcioClient
 
         foreach (JsonElement certElement in certs.EnumerateArray())
         {
-            string? b64 = certElement.GetString();
-            if (string.IsNullOrEmpty(b64))
+            string? certString = certElement.GetString();
+            if (string.IsNullOrEmpty(certString))
             {
                 throw new FulcioException("Fulcio response contains an empty certificate entry.");
             }
 
-            byte[] der = Convert.FromBase64String(b64);
+            // Certificate may be raw base64 DER or PEM-encoded
+            byte[] der;
+            if (certString.Contains("-----BEGIN CERTIFICATE-----", StringComparison.Ordinal))
+            {
+                string b64 = certString
+                    .Replace("-----BEGIN CERTIFICATE-----", string.Empty)
+                    .Replace("-----END CERTIFICATE-----", string.Empty)
+                    .Replace("\n", string.Empty)
+                    .Replace("\r", string.Empty)
+                    .Trim();
+                der = Convert.FromBase64String(b64);
+            }
+            else
+            {
+                der = Convert.FromBase64String(certString);
+            }
 #if NET9_0_OR_GREATER
             collection.Add(X509CertificateLoader.LoadCertificate(der));
 #else

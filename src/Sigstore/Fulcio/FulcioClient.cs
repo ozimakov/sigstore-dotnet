@@ -33,16 +33,21 @@ public sealed class FulcioClient : IFulcioClient
         ArgumentNullException.ThrowIfNull(csrDer);
         ArgumentNullException.ThrowIfNull(idToken);
 
-        string csrBase64 = Convert.ToBase64String(csrDer);
+        // Convert DER CSR to PEM for the Fulcio v2 REST API
+        string csrPem = "-----BEGIN CERTIFICATE REQUEST-----\n"
+            + Convert.ToBase64String(csrDer)
+            + "\n-----END CERTIFICATE REQUEST-----\n";
+        string csrBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(csrPem));
         string requestJson = JsonSerializer.Serialize(new
         {
-            credentials = new { oidcIdentityToken = idToken },
-            certificateSigningRequest = new { content = csrBase64 }
+            certificateSigningRequest = csrBase64
         });
 
-        Uri endpoint = new Uri(_baseUrl, "fulcio.v2.CA/CreateSigningCertificate");
+        Uri endpoint = new Uri(_baseUrl, "api/v2/signingCert");
         using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, endpoint);
         request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+        request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {idToken}");
+        request.Headers.TryAddWithoutValidation("Accept", "application/pem-certificate-chain");
 
         HttpResponseMessage response;
         try
@@ -63,8 +68,25 @@ public sealed class FulcioClient : IFulcioClient
                 throw new FulcioException($"Fulcio returned HTTP {(int)response.StatusCode}: {truncated}");
             }
 
-            string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            return ParseCertificateChain(json);
+            string responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+            // Fulcio may return JSON (signedCertificateEmbeddedSct/DetachedSct wrapper)
+            // or raw PEM (application/pem-certificate-chain). Detect by first character.
+            try
+            {
+                string trimmed = responseBody.TrimStart();
+                if (trimmed.Length > 0 && trimmed[0] == '{')
+                {
+                    return ParseCertificateChain(responseBody);
+                }
+
+                return ParsePemCertificateChain(responseBody);
+            }
+            catch (Exception ex) when (ex is not FulcioException)
+            {
+                string preview = responseBody.Length > 200 ? responseBody[..200] : responseBody;
+                throw new FulcioException($"Failed to parse Fulcio response (first 200 chars: {preview}): {ex.Message}", ex);
+            }
         }
     }
 
@@ -108,13 +130,28 @@ public sealed class FulcioClient : IFulcioClient
 
         foreach (JsonElement certElement in certs.EnumerateArray())
         {
-            string? b64 = certElement.GetString();
-            if (string.IsNullOrEmpty(b64))
+            string? certString = certElement.GetString();
+            if (string.IsNullOrEmpty(certString))
             {
                 throw new FulcioException("Fulcio response contains an empty certificate entry.");
             }
 
-            byte[] der = Convert.FromBase64String(b64);
+            // Certificate may be raw base64 DER or PEM-encoded
+            byte[] der;
+            if (certString.Contains("-----BEGIN CERTIFICATE-----", StringComparison.Ordinal))
+            {
+                string b64 = certString
+                    .Replace("-----BEGIN CERTIFICATE-----", string.Empty)
+                    .Replace("-----END CERTIFICATE-----", string.Empty)
+                    .Replace("\n", string.Empty)
+                    .Replace("\r", string.Empty)
+                    .Trim();
+                der = Convert.FromBase64String(b64);
+            }
+            else
+            {
+                der = Convert.FromBase64String(certString);
+            }
 #if NET9_0_OR_GREATER
             collection.Add(X509CertificateLoader.LoadCertificate(der));
 #else
@@ -125,6 +162,57 @@ public sealed class FulcioClient : IFulcioClient
         if (collection.Count == 0)
         {
             throw new FulcioException("Fulcio response contains an empty certificate chain.");
+        }
+
+        return collection;
+    }
+
+    private static X509Certificate2Collection ParsePemCertificateChain(string pem)
+    {
+        X509Certificate2Collection collection = new X509Certificate2Collection();
+        const string beginMarker = "-----BEGIN CERTIFICATE-----";
+        const string endMarker = "-----END CERTIFICATE-----";
+
+        int searchFrom = 0;
+        while (true)
+        {
+            int beginIndex = pem.IndexOf(beginMarker, searchFrom, StringComparison.Ordinal);
+            if (beginIndex < 0)
+            {
+                break;
+            }
+
+            int endIndex = pem.IndexOf(endMarker, beginIndex, StringComparison.Ordinal);
+            if (endIndex < 0)
+            {
+                break;
+            }
+
+            int b64Start = beginIndex + beginMarker.Length;
+            string raw = pem.Substring(b64Start, endIndex - b64Start);
+            // Strip all whitespace from PEM base64 content
+            StringBuilder b64Builder = new StringBuilder(raw.Length);
+            for (int i = 0; i < raw.Length; i++)
+            {
+                char c = raw[i];
+                if (c != '\n' && c != '\r' && c != ' ' && c != '\t')
+                {
+                    b64Builder.Append(c);
+                }
+            }
+
+            byte[] der = Convert.FromBase64String(b64Builder.ToString());
+#if NET9_0_OR_GREATER
+            collection.Add(X509CertificateLoader.LoadCertificate(der));
+#else
+            collection.Add(new X509Certificate2(der));
+#endif
+            searchFrom = endIndex + endMarker.Length;
+        }
+
+        if (collection.Count == 0)
+        {
+            throw new FulcioException("Fulcio PEM response contains no certificates.");
         }
 
         return collection;

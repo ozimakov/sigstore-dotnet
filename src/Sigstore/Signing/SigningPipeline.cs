@@ -247,15 +247,11 @@ public sealed class SigningPipeline
         X509Certificate2Collection chain,
         TransparencyLogEntry tlogEntry)
     {
-        X509CertificateChain certChain = new X509CertificateChain();
-        for (int i = 0; i < chain.Count; i++)
-        {
-            certChain.Certificates.Add(new X509CertProto { RawBytes = ByteString.CopyFrom(chain[i].RawData) });
-        }
-
+        // Bundle v0.3: use single `certificate` field (leaf only), not the full chain.
+        // The trusted root provides the CA chain for verification.
         VerificationMaterial material = new VerificationMaterial
         {
-            X509CertificateChain = certChain
+            Certificate = new X509CertProto { RawBytes = ByteString.CopyFrom(chain[0].RawData) }
         };
         material.TlogEntries.Add(tlogEntry);
 

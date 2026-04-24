@@ -46,7 +46,7 @@ public sealed class RekorClient : IRekorClient
         string body = JsonSerializer.Serialize(new
         {
             kind = "hashedrekord",
-            apiVersion = "0.0.2",
+            apiVersion = "0.0.1",
             spec = new
             {
                 signature = new
@@ -60,7 +60,7 @@ public sealed class RekorClient : IRekorClient
                 }
             }
         });
-        return PostEntryAsync(body, "hashedrekord", "0.0.2", cancellationToken);
+        return PostEntryAsync(body, "hashedrekord", "0.0.1", cancellationToken);
     }
 
     /// <inheritdoc/>

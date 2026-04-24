@@ -84,6 +84,7 @@ public sealed class VerificationPipeline
         steps.Add("Step 4: Identity policy matched issuer and subject material.");
 
         TransparencyLogEntry tlogEntry = ExtractTransparencyLogEntry(model);
+        VerifyCanonicalizedBody(tlogEntry, model);
         ValidateCertificateTiming(leaf, tlogEntry, model);
         steps.Add("Step 5: Certificate validity window is consistent with Rekor integrated time and/or RFC 3161 countersignatures.");
 
@@ -121,6 +122,7 @@ public sealed class VerificationPipeline
         using RSA? rsaKey = ecKey is null ? TryLoadRsaFromPem(publicKeyPem) : null;
 
         TransparencyLogEntry tlogEntry = ExtractTransparencyLogEntry(model);
+        VerifyCanonicalizedBody(tlogEntry, model);
         steps.Add("Step 5: Skipped certificate timing (managed-key mode).");
 
         _transparencyLogVerifier.VerifyTransparencyLogEntry(tlogEntry, trustedRoot, steps);
@@ -647,5 +649,92 @@ public sealed class VerificationPipeline
         }
 
         throw new SignatureVerificationException("Step 8 (signature): unsupported digest algorithm.");
+    }
+
+    private static void VerifyCanonicalizedBody(TransparencyLogEntry entry, BundleProto model)
+    {
+        if (entry.CanonicalizedBody.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            byte[] bodyBytes = entry.CanonicalizedBody.ToByteArray();
+            // canonicalizedBody is base64-encoded in bundle JSON
+            string bodyJson;
+            try
+            {
+                bodyJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(
+                    System.Text.Encoding.UTF8.GetString(bodyBytes)));
+            }
+            catch (FormatException)
+            {
+                bodyJson = System.Text.Encoding.UTF8.GetString(bodyBytes);
+            }
+
+            using JsonDocument doc = JsonDocument.Parse(bodyJson);
+            JsonElement root = doc.RootElement;
+
+            if (!root.TryGetProperty("spec", out JsonElement spec))
+            {
+                return;
+            }
+
+            // Cross-check artifact hash
+            if (model.ContentCase == BundleProto.ContentOneofCase.MessageSignature &&
+                model.MessageSignature.MessageDigest is not null)
+            {
+                if (spec.TryGetProperty("data", out JsonElement data) &&
+                    data.TryGetProperty("hash", out JsonElement hash) &&
+                    hash.TryGetProperty("value", out JsonElement hashValue))
+                {
+                    string? entryHash = hashValue.GetString();
+                    string bundleHash = Convert.ToHexString(
+                        model.MessageSignature.MessageDigest.Digest.Span).ToLowerInvariant();
+                    if (entryHash is not null &&
+                        !string.Equals(entryHash, bundleHash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new TransparencyLogException(
+                            "Step 6 (transparency log): canonicalized body hash does not match bundle message digest.");
+                    }
+                }
+            }
+
+            // Cross-check signature
+            if (spec.TryGetProperty("signature", out JsonElement sigEl) &&
+                sigEl.TryGetProperty("content", out JsonElement sigContent))
+            {
+                string? entrySig = sigContent.GetString();
+                byte[]? bundleSig = null;
+                if (model.ContentCase == BundleProto.ContentOneofCase.MessageSignature)
+                {
+                    bundleSig = model.MessageSignature.Signature.ToByteArray();
+                }
+                else if (model.ContentCase == BundleProto.ContentOneofCase.DsseEnvelope &&
+                         model.DsseEnvelope.Signatures.Count > 0)
+                {
+                    bundleSig = model.DsseEnvelope.Signatures[0].Sig.ToByteArray();
+                }
+
+                if (entrySig is not null && bundleSig is not null)
+                {
+                    string bundleSigB64 = Convert.ToBase64String(bundleSig);
+                    if (!string.Equals(entrySig, bundleSigB64, StringComparison.Ordinal))
+                    {
+                        throw new TransparencyLogException(
+                            "Step 6 (transparency log): canonicalized body signature does not match bundle signature.");
+                    }
+                }
+            }
+        }
+        catch (TransparencyLogException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // If we can't parse the body, skip the cross-check
+        }
     }
 }

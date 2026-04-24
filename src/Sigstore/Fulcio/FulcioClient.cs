@@ -69,9 +69,10 @@ public sealed class FulcioClient : IFulcioClient
             }
 
             string responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            string? contentType = response.Content.Headers.ContentType?.MediaType;
 
-            if (string.Equals(contentType, "application/pem-certificate-chain", StringComparison.OrdinalIgnoreCase))
+            // Try PEM parsing first (we request application/pem-certificate-chain),
+            // fall back to JSON if the response isn't PEM.
+            if (responseBody.Contains("-----BEGIN CERTIFICATE-----", StringComparison.Ordinal))
             {
                 return ParsePemCertificateChain(responseBody);
             }

@@ -72,12 +72,20 @@ public sealed class FulcioClient : IFulcioClient
 
             // Try PEM parsing first (we request application/pem-certificate-chain),
             // fall back to JSON if the response isn't PEM.
-            if (responseBody.Contains("-----BEGIN CERTIFICATE-----", StringComparison.Ordinal))
+            try
             {
-                return ParsePemCertificateChain(responseBody);
-            }
+                if (responseBody.Contains("-----BEGIN CERTIFICATE-----", StringComparison.Ordinal))
+                {
+                    return ParsePemCertificateChain(responseBody);
+                }
 
-            return ParseCertificateChain(responseBody);
+                return ParseCertificateChain(responseBody);
+            }
+            catch (Exception ex) when (ex is not FulcioException)
+            {
+                string preview = responseBody.Length > 200 ? responseBody[..200] : responseBody;
+                throw new FulcioException($"Failed to parse Fulcio response (first 200 chars: {preview}): {ex.Message}", ex);
+            }
         }
     }
 

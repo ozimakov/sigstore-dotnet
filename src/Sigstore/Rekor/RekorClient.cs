@@ -41,7 +41,7 @@ public sealed class RekorClient : IRekorClient
 
         string hexDigest = Convert.ToHexString(artifactDigest).ToLowerInvariant();
         string sigB64 = Convert.ToBase64String(signature);
-        string certPem = ConvertToPem(leafCert);
+        string certPem = ConvertToPemBase64(leafCert);
 
         string body = JsonSerializer.Serialize(new
         {
@@ -73,7 +73,7 @@ public sealed class RekorClient : IRekorClient
         ArgumentNullException.ThrowIfNull(leafCert);
 
         string envelopeB64 = Convert.ToBase64String(envelopeJson);
-        string certPem = ConvertToPem(leafCert);
+        string certPem = ConvertToPemBase64(leafCert);
 
         string body = JsonSerializer.Serialize(new
         {
@@ -193,10 +193,11 @@ public sealed class RekorClient : IRekorClient
         };
     }
 
-    private static string ConvertToPem(X509Certificate2 cert)
+    private static string ConvertToPemBase64(X509Certificate2 cert)
     {
-        return "-----BEGIN CERTIFICATE-----\n"
+        string pem = "-----BEGIN CERTIFICATE-----\n"
             + Convert.ToBase64String(cert.RawData)
             + "\n-----END CERTIFICATE-----\n";
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(pem));
     }
 }

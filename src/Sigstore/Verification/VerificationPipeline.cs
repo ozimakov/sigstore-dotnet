@@ -757,6 +757,36 @@ public sealed class VerificationPipeline
                 }
             }
 
+            // Cross-check signature — DSSE V002 format (spec.dsseV002.signatures[].content)
+            if (spec.TryGetProperty("dsseV002", out JsonElement dsseV002) &&
+                dsseV002.TryGetProperty("signatures", out JsonElement v002Sigs) &&
+                v002Sigs.ValueKind == JsonValueKind.Array &&
+                model.ContentCase == BundleProto.ContentOneofCase.DsseEnvelope &&
+                model.DsseEnvelope.Signatures.Count > 0)
+            {
+                byte[] bundleSig = model.DsseEnvelope.Signatures[0].Sig.ToByteArray();
+                string bundleSigB64 = Convert.ToBase64String(bundleSig);
+                bool sigFound = false;
+                foreach (JsonElement v002Sig in v002Sigs.EnumerateArray())
+                {
+                    if (v002Sig.TryGetProperty("content", out JsonElement v002Content))
+                    {
+                        string? loggedSig = v002Content.GetString();
+                        if (string.Equals(loggedSig, bundleSigB64, StringComparison.Ordinal))
+                        {
+                            sigFound = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!sigFound)
+                {
+                    throw new TransparencyLogException(
+                        "Step 6 (transparency log): DSSE V002 signature in tlog entry does not match bundle envelope signature.");
+                }
+            }
+
             // Cross-check DSSE envelope hash
             if (spec.TryGetProperty("envelopeHash", out JsonElement envelopeHash) &&
                 envelopeHash.TryGetProperty("value", out JsonElement envHashValue) &&

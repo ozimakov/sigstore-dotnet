@@ -212,7 +212,7 @@ public sealed class RekorClient : IRekorClient
                 string? rh = pRootHash.GetString();
                 if (!string.IsNullOrEmpty(rh))
                 {
-                    proof.RootHash = ByteString.CopyFrom(Convert.FromBase64String(rh));
+                    proof.RootHash = ByteString.CopyFrom(Convert.FromHexString(rh));
                 }
             }
 
@@ -224,7 +224,7 @@ public sealed class RekorClient : IRekorClient
                     string? hv = h.GetString();
                     if (!string.IsNullOrEmpty(hv))
                     {
-                        proof.Hashes.Add(ByteString.CopyFrom(Convert.FromBase64String(hv)));
+                        proof.Hashes.Add(ByteString.CopyFrom(Convert.FromHexString(hv)));
                     }
                 }
             }

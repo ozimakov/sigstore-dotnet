@@ -148,7 +148,16 @@ public sealed class RekorClient : IRekorClient
             }
 
             string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            return ParseTransparencyLogEntry(json, kind, apiVersion);
+            try
+            {
+                return ParseTransparencyLogEntry(json, kind, apiVersion);
+            }
+            catch (RekorException)
+            {
+                // Include truncated response in error for debugging
+                string truncJson = json.Length > 800 ? json[..800] : json;
+                throw new RekorException($"Failed to parse Rekor response (first 800 chars): {truncJson}");
+            }
         }
     }
 

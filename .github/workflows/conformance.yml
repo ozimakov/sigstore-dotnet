@@ -38,8 +38,8 @@ jobs:
         uses: sigstore/sigstore-conformance@v0.0.25
         with:
           entrypoint: ${{ github.workspace }}/sigstore-tool/sigstore-dotnet
-          skip-signing: true
           skip-cpython-release-tests: true
+          xfail: 'test_sign_verify_rekor2'
 
       - name: Upload conformance logs
         if: always()

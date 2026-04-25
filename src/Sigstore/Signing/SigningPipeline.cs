@@ -61,11 +61,24 @@ public sealed class SigningPipeline
     /// <param name="trustedRoot">Trusted root to validate Fulcio chain and Rekor SET against.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Signing result containing the bundle JSON and signer identity.</returns>
+    public Task<SigningResult> RunAsync(
+        byte[] artifact,
+        string? payloadType,
+        string oidcAudience,
+        TrustedRoot trustedRoot,
+        CancellationToken cancellationToken)
+    {
+        return RunAsync(artifact, payloadType, oidcAudience, trustedRoot,
+            tsaUrl: null, httpClient: null, cancellationToken);
+    }
+
     public async Task<SigningResult> RunAsync(
         byte[] artifact,
         string? payloadType,
         string oidcAudience,
         TrustedRoot trustedRoot,
+        Uri? tsaUrl,
+        HttpClient? httpClient,
         CancellationToken cancellationToken)
     {
         _logger.LogDebug("Starting sign operation. PayloadType={PayloadType}, ArtifactSize={Size}",
@@ -108,8 +121,17 @@ public sealed class SigningPipeline
             // Step 8: Validate Rekor SET presence
             VerifyInclusionPromise(tlogEntry);
 
-            // Step 9: Assemble bundle
-            string bundleJson = AssembleBundle(artifact, payloadType, signature, chain, tlogEntry);
+            // Step 9: Request TSA timestamp if configured
+            byte[]? tsaTimestamp = null;
+            if (tsaUrl is not null && httpClient is not null)
+            {
+                tsaTimestamp = await RequestTimestampAsync(httpClient, tsaUrl, signature, cancellationToken)
+                    .ConfigureAwait(false);
+                _logger.LogDebug("TSA timestamp obtained from {TsaUrl}", tsaUrl);
+            }
+
+            // Step 10: Assemble bundle
+            string bundleJson = AssembleBundle(artifact, payloadType, signature, chain, tlogEntry, tsaTimestamp);
             _logger.LogDebug("Bundle assembled.");
 
             // Step 10: Extract signer identity and return
@@ -240,12 +262,56 @@ public sealed class SigningPipeline
         }
     }
 
+    private static async Task<byte[]> RequestTimestampAsync(
+        HttpClient httpClient, Uri tsaUrl, byte[] signature, CancellationToken cancellationToken)
+    {
+        // RFC 3161: timestamp request is the hash of the data to be timestamped
+        byte[] hash = SHA256.HashData(signature);
+
+        // Build a minimal RFC 3161 TimeStampReq (DER-encoded ASN.1)
+        // We use System.Formats.Asn1 to build the request
+        System.Formats.Asn1.AsnWriter writer = new(System.Formats.Asn1.AsnEncodingRules.DER);
+        using (writer.PushSequence()) // TimeStampReq
+        {
+            writer.WriteInteger(1); // version
+            using (writer.PushSequence()) // messageImprint
+            {
+                using (writer.PushSequence()) // hashAlgorithm (AlgorithmIdentifier)
+                {
+                    writer.WriteObjectIdentifier("2.16.840.1.101.3.4.2.1"); // SHA-256
+                }
+                writer.WriteOctetString(hash); // hashedMessage
+            }
+            writer.WriteBoolean(true); // certReq
+        }
+
+        byte[] tsReqDer = writer.Encode();
+
+        using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, tsaUrl);
+        request.Content = new ByteArrayContent(tsReqDer);
+        request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/timestamp-query");
+
+        HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            string err = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            throw new SigningException($"TSA returned HTTP {(int)response.StatusCode}: {err}");
+        }
+
+        byte[] tsResp = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+
+        // The response might be a TimeStampResp (wrapping a token) or a raw token.
+        // The conformance test expects the raw bytes as-is in the bundle.
+        return tsResp;
+    }
+
     private static string AssembleBundle(
         byte[] artifact,
         string? payloadType,
         byte[] signature,
         X509Certificate2Collection chain,
-        TransparencyLogEntry tlogEntry)
+        TransparencyLogEntry tlogEntry,
+        byte[]? tsaTimestamp = null)
     {
         // Bundle v0.3: use single `certificate` field (leaf only), not the full chain.
         // The trusted root provides the CA chain for verification.
@@ -254,6 +320,16 @@ public sealed class SigningPipeline
             Certificate = new X509CertProto { RawBytes = ByteString.CopyFrom(chain[0].RawData) }
         };
         material.TlogEntries.Add(tlogEntry);
+
+        if (tsaTimestamp is not null)
+        {
+            material.TimestampVerificationData = new TimestampVerificationData();
+            material.TimestampVerificationData.Rfc3161Timestamps.Add(
+                new Dev.Sigstore.Common.V1.RFC3161SignedTimestamp
+                {
+                    SignedTimestamp = ByteString.CopyFrom(tsaTimestamp)
+                });
+        }
 
         BundleProto bundle = new BundleProto
         {

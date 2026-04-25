@@ -164,6 +164,8 @@ public static class ConformanceRunner
         string? identityToken = null;
         string? bundleOutputPath = null;
         string? artifactPath = null;
+        string? trustedRootPath = null;
+        string? signingConfigPath = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -177,6 +179,18 @@ public static class ConformanceRunner
             if (string.Equals(a, "--bundle", StringComparison.Ordinal) && i + 1 < args.Length)
             {
                 bundleOutputPath = args.Span[++i];
+                continue;
+            }
+
+            if (string.Equals(a, "--trusted-root", StringComparison.Ordinal) && i + 1 < args.Length)
+            {
+                trustedRootPath = args.Span[++i];
+                continue;
+            }
+
+            if (string.Equals(a, "--signing-config", StringComparison.Ordinal) && i + 1 < args.Length)
+            {
+                signingConfigPath = args.Span[++i];
                 continue;
             }
 
@@ -200,20 +214,78 @@ public static class ConformanceRunner
         byte[] artifact = await File.ReadAllBytesAsync(artifactPath).ConfigureAwait(false);
 
         using HttpClient http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-        TufClient tufClient = new TufClient(http, NullLogger<TufClient>.Instance);
-        TrustedRoot trustedRoot = await tufClient.FetchPublicGoodTrustedRootAsync(CancellationToken.None).ConfigureAwait(false);
+
+        // Determine trusted root
+        TrustedRoot trustedRoot;
+        if (trustedRootPath is not null)
+        {
+            string trJson = await File.ReadAllTextAsync(trustedRootPath).ConfigureAwait(false);
+            var parser = new Google.Protobuf.JsonParser(
+                Google.Protobuf.JsonParser.Settings.Default.WithIgnoreUnknownFields(true));
+            trustedRoot = parser.Parse<TrustedRoot>(trJson);
+        }
+        else
+        {
+            TufClient tufClient = new TufClient(http, NullLogger<TufClient>.Instance);
+            trustedRoot = await tufClient.FetchPublicGoodTrustedRootAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+
+        // Determine signing endpoints from signing config or defaults
+        Uri fulcioUrl = new Uri("https://fulcio.sigstore.dev/");
+        Uri rekorUrl = new Uri("https://rekor.sigstore.dev/");
+        Uri? tsaUrl = null;
+
+        if (signingConfigPath is not null)
+        {
+            string scJson = await File.ReadAllTextAsync(signingConfigPath).ConfigureAwait(false);
+            var parser = new Google.Protobuf.JsonParser(
+                Google.Protobuf.JsonParser.Settings.Default.WithIgnoreUnknownFields(true));
+            var signingConfig = parser.Parse<Dev.Sigstore.Trustroot.V1.SigningConfig>(scJson);
+
+            // Select the first valid CA URL
+            foreach (var ca in signingConfig.CaUrls)
+            {
+                if (!string.IsNullOrEmpty(ca.Url))
+                {
+                    fulcioUrl = new Uri(ca.Url.TrimEnd('/') + "/");
+                    break;
+                }
+            }
+
+            // Select the first valid Rekor URL
+            foreach (var tlog in signingConfig.RekorTlogUrls)
+            {
+                if (!string.IsNullOrEmpty(tlog.Url))
+                {
+                    rekorUrl = new Uri(tlog.Url.TrimEnd('/') + "/");
+                    break;
+                }
+            }
+
+            // Select the first valid TSA URL
+            foreach (var tsa in signingConfig.TsaUrls)
+            {
+                if (!string.IsNullOrEmpty(tsa.Url))
+                {
+                    tsaUrl = new Uri(tsa.Url.TrimEnd('/') + "/");
+                    break;
+                }
+            }
+        }
 
         SigningPipeline pipeline = new SigningPipeline(
             new StaticTokenProvider(identityToken),
-            new FulcioClient(http, new Uri("https://fulcio.sigstore.dev/")),
-            new RekorClient(http, new Uri("https://rekor.sigstore.dev/")),
+            new FulcioClient(http, fulcioUrl),
+            new RekorClient(http, rekorUrl),
             new CertificateVerifier(),
             NullLogger<SigningPipeline>.Instance);
 
         try
         {
             SigningResult result = await pipeline.RunAsync(
-                artifact, payloadType: null, "sigstore", trustedRoot, CancellationToken.None).ConfigureAwait(false);
+                artifact, payloadType: null, "sigstore", trustedRoot,
+                tsaUrl: tsaUrl, httpClient: http,
+                CancellationToken.None).ConfigureAwait(false);
             await File.WriteAllTextAsync(bundleOutputPath, result.BundleJson).ConfigureAwait(false);
             return 0;
         }

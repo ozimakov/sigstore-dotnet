@@ -218,12 +218,46 @@ public sealed class RekorClient : IRekorClient
         long integratedTime = 0;
         if (entry.TryGetProperty("integratedTime", out JsonElement itEl))
         {
-            integratedTime = itEl.GetInt64();
+            if (itEl.ValueKind == JsonValueKind.String)
+                long.TryParse(itEl.GetString(), out integratedTime);
+            else if (itEl.ValueKind == JsonValueKind.Number)
+                integratedTime = itEl.GetInt64();
         }
-        string logId = entry.GetProperty("logID").GetString() ?? string.Empty;
-        string body = entry.GetProperty("body").GetString() ?? string.Empty;
 
-        // Parse actual kind/version from the canonicalized body
+        // v1 uses "logID" (hex), v2/protobuf uses "logId" (object with keyId)
+        string logId = string.Empty;
+        byte[] logIdBytes = Array.Empty<byte>();
+        if (entry.TryGetProperty("logID", out JsonElement logIdEl) && logIdEl.ValueKind == JsonValueKind.String)
+        {
+            logId = logIdEl.GetString() ?? string.Empty;
+            if (!string.IsNullOrEmpty(logId))
+                logIdBytes = Convert.FromHexString(logId);
+        }
+        else if (entry.TryGetProperty("logId", out JsonElement logIdObj) &&
+                 logIdObj.TryGetProperty("keyId", out JsonElement keyIdEl))
+        {
+            string? keyIdB64 = keyIdEl.GetString();
+            if (!string.IsNullOrEmpty(keyIdB64))
+                logIdBytes = Convert.FromBase64String(keyIdB64);
+        }
+
+        // v1 uses "body" (base64), v2/protobuf uses "canonicalizedBody" (base64)
+        string body = string.Empty;
+        if (entry.TryGetProperty("body", out JsonElement bodyEl))
+            body = bodyEl.GetString() ?? string.Empty;
+        else if (entry.TryGetProperty("canonicalizedBody", out JsonElement cbEl))
+            body = cbEl.GetString() ?? string.Empty;
+
+        // Parse kind/version from entry's kindVersion field (v2/protobuf format)
+        if (entry.TryGetProperty("kindVersion", out JsonElement kvEl))
+        {
+            if (kvEl.TryGetProperty("kind", out JsonElement kvKind))
+                kind = kvKind.GetString() ?? kind;
+            if (kvEl.TryGetProperty("version", out JsonElement kvVer))
+                apiVersion = kvVer.GetString() ?? apiVersion;
+        }
+
+        // Also try parsing from the canonicalized body (v1 format)
         try
         {
             byte[] decodedBody = Convert.FromBase64String(body);
@@ -243,21 +277,26 @@ public sealed class RekorClient : IRekorClient
             // Use the passed-in defaults
         }
 
+        // Extract SET from v1 "verification.signedEntryTimestamp" or v2 "inclusionPromise.signedEntryTimestamp"
         string setB64 = string.Empty;
         if (entry.TryGetProperty("verification", out JsonElement verification) &&
             verification.TryGetProperty("signedEntryTimestamp", out JsonElement setElement))
         {
             setB64 = setElement.GetString() ?? string.Empty;
         }
-
-        byte[] logIdBytes = string.IsNullOrEmpty(logId)
-            ? Array.Empty<byte>()
-            : Convert.FromHexString(logId);
+        else if (entry.TryGetProperty("inclusionPromise", out JsonElement ipEl) &&
+                 ipEl.ValueKind == JsonValueKind.Object &&
+                 ipEl.TryGetProperty("signedEntryTimestamp", out JsonElement ipSetEl))
+        {
+            setB64 = ipSetEl.GetString() ?? string.Empty;
+        }
 
         byte[] setBytes = string.IsNullOrEmpty(setB64)
             ? Array.Empty<byte>()
             : Convert.FromBase64String(setB64);
-        byte[] bodyBytes = Convert.FromBase64String(body);
+        byte[] bodyBytes = string.IsNullOrEmpty(body)
+            ? Array.Empty<byte>()
+            : Convert.FromBase64String(body);
 
         TransparencyLogEntry result = new TransparencyLogEntry
         {
@@ -276,19 +315,40 @@ public sealed class RekorClient : IRekorClient
             };
         }
 
-        // Parse inclusion proof if present
+        // Parse inclusion proof: v1 nests under "verification.inclusionProof",
+        // v2/protobuf puts it directly on "inclusionProof"
+        JsonElement proofEl = default;
         if (verification.ValueKind != JsonValueKind.Undefined &&
-            verification.TryGetProperty("inclusionProof", out JsonElement proofEl))
+            verification.TryGetProperty("inclusionProof", out JsonElement vProof))
+        {
+            proofEl = vProof;
+        }
+        else if (entry.TryGetProperty("inclusionProof", out JsonElement eProof) &&
+                 eProof.ValueKind == JsonValueKind.Object)
+        {
+            proofEl = eProof;
+        }
+
+        if (proofEl.ValueKind == JsonValueKind.Object)
         {
             InclusionProof proof = new InclusionProof();
             if (proofEl.TryGetProperty("logIndex", out JsonElement pLogIdx))
             {
-                proof.LogIndex = pLogIdx.GetInt64();
+                if (pLogIdx.ValueKind == JsonValueKind.String)
+                    long.TryParse(pLogIdx.GetString(), out long pli);
+                else
+                    proof.LogIndex = pLogIdx.GetInt64();
+
+                if (pLogIdx.ValueKind == JsonValueKind.String && long.TryParse(pLogIdx.GetString(), out long pliVal))
+                    proof.LogIndex = pliVal;
             }
 
             if (proofEl.TryGetProperty("treeSize", out JsonElement pTreeSize))
             {
-                proof.TreeSize = pTreeSize.GetInt64();
+                if (pTreeSize.ValueKind == JsonValueKind.String && long.TryParse(pTreeSize.GetString(), out long ts))
+                    proof.TreeSize = ts;
+                else if (pTreeSize.ValueKind == JsonValueKind.Number)
+                    proof.TreeSize = pTreeSize.GetInt64();
             }
 
             if (proofEl.TryGetProperty("rootHash", out JsonElement pRootHash))
@@ -296,7 +356,8 @@ public sealed class RekorClient : IRekorClient
                 string? rh = pRootHash.GetString();
                 if (!string.IsNullOrEmpty(rh))
                 {
-                    proof.RootHash = ByteString.CopyFrom(Convert.FromHexString(rh));
+                    // v1 uses hex, v2/protobuf uses base64
+                    proof.RootHash = ByteString.CopyFrom(DecodeHexOrBase64(rh));
                 }
             }
 
@@ -308,17 +369,25 @@ public sealed class RekorClient : IRekorClient
                     string? hv = h.GetString();
                     if (!string.IsNullOrEmpty(hv))
                     {
-                        proof.Hashes.Add(ByteString.CopyFrom(Convert.FromHexString(hv)));
+                        proof.Hashes.Add(ByteString.CopyFrom(DecodeHexOrBase64(hv)));
                     }
                 }
             }
 
             if (proofEl.TryGetProperty("checkpoint", out JsonElement pCheckpoint))
             {
-                string? ckpt = pCheckpoint.GetString();
-                if (!string.IsNullOrEmpty(ckpt))
+                if (pCheckpoint.ValueKind == JsonValueKind.String)
                 {
-                    proof.Checkpoint = new Dev.Sigstore.Rekor.V1.Checkpoint { Envelope = ckpt };
+                    string? ckpt = pCheckpoint.GetString();
+                    if (!string.IsNullOrEmpty(ckpt))
+                        proof.Checkpoint = new Dev.Sigstore.Rekor.V1.Checkpoint { Envelope = ckpt };
+                }
+                else if (pCheckpoint.ValueKind == JsonValueKind.Object &&
+                         pCheckpoint.TryGetProperty("envelope", out JsonElement ckptEnv))
+                {
+                    string? ckpt = ckptEnv.GetString();
+                    if (!string.IsNullOrEmpty(ckpt))
+                        proof.Checkpoint = new Dev.Sigstore.Rekor.V1.Checkpoint { Envelope = ckpt };
                 }
             }
 
@@ -326,6 +395,17 @@ public sealed class RekorClient : IRekorClient
         }
 
         return result;
+    }
+
+    private static byte[] DecodeHexOrBase64(string value)
+    {
+        // Hex strings only contain 0-9, a-f, A-F and have even length
+        if (value.Length % 2 == 0 && value.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+        {
+            return Convert.FromHexString(value);
+        }
+
+        return Convert.FromBase64String(value);
     }
 
     private static string ConvertToPemBase64(X509Certificate2 cert)

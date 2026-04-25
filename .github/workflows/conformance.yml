@@ -38,8 +38,8 @@ jobs:
         with:
           entrypoint: ${{ github.workspace }}/sigstore-tool/sigstore-dotnet
           skip-cpython-release-tests: true
-          # 3 remaining xfails: signing test (needs staging config), SCT validation, integrated-time-in-future
-          xfail: 'test_sign_verify_rekor2 test_verify*invalid-ct-key_fail] test_verify*integrated-time-in-future_fail]'
+          # 2 remaining xfails: signing test (needs staging config), SET verification (invalid SET not detected)
+          xfail: 'test_sign_verify_rekor2 test_verify*integrated-time-in-future_fail]'
 
       - name: Upload conformance logs
         if: always()

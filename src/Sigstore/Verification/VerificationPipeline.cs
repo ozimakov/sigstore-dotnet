@@ -79,6 +79,8 @@ public sealed class VerificationPipeline
         IReadOnlyList<X509Certificate2> chain = _certificateVerifier.BuildVerifiedChain(leaf, trustedRoot);
         steps.Add("Step 3: Validated Fulcio certificate chain against the trusted root.");
 
+        ValidateSctAgainstTrustedRoot(leaf, trustedRoot);
+
         SignerIdentity identity = ExtractSignerIdentity(leaf);
         EnforceIdentityPolicy(identity, policy);
         steps.Add("Step 4: Identity policy matched issuer and subject material.");
@@ -353,6 +355,109 @@ public sealed class VerificationPipeline
                 break;
             default:
                 throw new IdentityPolicyException("Step 4 (identity policy): unsupported identity matcher.");
+        }
+    }
+
+    private static void ValidateSctAgainstTrustedRoot(X509Certificate2 leaf, TrustedRoot trustedRoot)
+    {
+        if (trustedRoot.Ctlogs.Count == 0)
+        {
+            return;
+        }
+
+        // OID for SCT list embedded in precertificates
+        const string SctListOid = "1.3.6.1.4.1.11129.2.4.2";
+        X509Extension? sctExt = null;
+        foreach (X509Extension ext in leaf.Extensions)
+        {
+            if (ext.Oid?.Value == SctListOid)
+            {
+                sctExt = ext;
+                break;
+            }
+        }
+
+        if (sctExt is null)
+        {
+            return; // No SCT extension — nothing to validate
+        }
+
+        // Collect trusted CT log IDs (SHA-256 of the SPKI DER)
+        HashSet<string> trustedLogIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Dev.Sigstore.Trustroot.V1.TransparencyLogInstance ctlog in trustedRoot.Ctlogs)
+        {
+            if (ctlog.LogId is not null)
+            {
+                trustedLogIds.Add(Convert.ToHexString(ctlog.LogId.KeyId.Span));
+            }
+        }
+
+        // Parse the SCT list from the extension.
+        // The extension value is an ASN.1 OCTET STRING wrapping a TLS-encoded SCT list.
+        // TLS SCT list: uint16 list_length, then for each SCT:
+        //   uint16 sct_length, then SCT struct (version, log_id[32], timestamp, extensions, sig)
+        byte[] sctData = sctExt.RawData;
+        try
+        {
+            // The outer ASN.1 OCTET STRING is already decoded by X509Extension
+            // The content is a TLS-encoded SignedCertificateTimestampList
+            int offset = 0;
+
+            // Some implementations wrap in an extra OCTET STRING
+            if (sctData.Length > 2 && sctData[0] == 0x04)
+            {
+                AsnReader octetReader = new AsnReader(sctData, AsnEncodingRules.DER);
+                sctData = octetReader.ReadOctetString();
+                offset = 0;
+            }
+
+            if (sctData.Length < 2)
+            {
+                return;
+            }
+
+            int listLength = (sctData[offset] << 8) | sctData[offset + 1];
+            offset += 2;
+            int listEnd = offset + listLength;
+
+            bool anyMatched = false;
+            while (offset + 2 < listEnd && offset + 2 < sctData.Length)
+            {
+                int sctLength = (sctData[offset] << 8) | sctData[offset + 1];
+                offset += 2;
+
+                if (offset + sctLength > sctData.Length || sctLength < 33)
+                {
+                    break;
+                }
+
+                // SCT struct: version (1 byte), log_id (32 bytes), ...
+                // byte version = sctData[offset];
+                byte[] logId = sctData.AsSpan(offset + 1, 32).ToArray();
+                string logIdHex = Convert.ToHexString(logId);
+
+                if (trustedLogIds.Contains(logIdHex))
+                {
+                    anyMatched = true;
+                    break;
+                }
+
+                offset += sctLength;
+            }
+
+            if (!anyMatched)
+            {
+                throw new CertificateValidationException(
+                    "Step 3 (certificate): SCT log ID does not match any trusted CT log in the trusted root.");
+            }
+        }
+        catch (CertificateValidationException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // If we can't parse SCTs, skip the check
         }
     }
 

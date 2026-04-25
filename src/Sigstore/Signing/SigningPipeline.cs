@@ -118,8 +118,11 @@ public sealed class SigningPipeline
                 artifact, payloadType, signature, chain[0], cancellationToken).ConfigureAwait(false);
             _logger.LogDebug("Rekor entry uploaded. LogIndex={LogIndex}", tlogEntry.LogIndex);
 
-            // Step 8: Validate Rekor SET presence
-            VerifyInclusionPromise(tlogEntry);
+            // Step 8: Validate Rekor SET presence (optional for Rekor v2 which uses TSA timestamps)
+            if (tsaUrl is null)
+            {
+                VerifyInclusionPromise(tlogEntry);
+            }
 
             // Step 9: Request TSA timestamp if configured
             byte[]? tsaTimestamp = null;

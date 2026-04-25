@@ -234,6 +234,7 @@ public static class ConformanceRunner
         Uri fulcioUrl = new Uri("https://fulcio.sigstore.dev/");
         Uri rekorUrl = new Uri("https://rekor.sigstore.dev/");
         Uri? tsaUrl = null;
+        string rekorVersion = "0.0.1";
 
         if (signingConfigPath is not null)
         {
@@ -258,6 +259,10 @@ public static class ConformanceRunner
                 if (!string.IsNullOrEmpty(tlog.Url))
                 {
                     rekorUrl = new Uri(tlog.Url.TrimEnd('/') + "/");
+                    if (tlog.MajorApiVersion >= 2)
+                    {
+                        rekorVersion = "0.0.2";
+                    }
                     break;
                 }
             }
@@ -276,7 +281,7 @@ public static class ConformanceRunner
         SigningPipeline pipeline = new SigningPipeline(
             new StaticTokenProvider(identityToken),
             new FulcioClient(http, fulcioUrl),
-            new RekorClient(http, rekorUrl),
+            new RekorClient(http, rekorUrl, rekorVersion),
             new CertificateVerifier(),
             NullLogger<SigningPipeline>.Instance);
 

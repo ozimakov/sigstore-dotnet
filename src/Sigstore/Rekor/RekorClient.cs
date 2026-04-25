@@ -18,14 +18,16 @@ public sealed class RekorClient : IRekorClient
 
     private readonly HttpClient _httpClient;
     private readonly Uri _baseUrl;
+    private readonly string _hashedRekordVersion;
 
     /// <summary>Creates a Rekor client.</summary>
-    public RekorClient(HttpClient httpClient, Uri baseUrl)
+    public RekorClient(HttpClient httpClient, Uri baseUrl, string hashedRekordVersion = "0.0.1")
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentNullException.ThrowIfNull(baseUrl);
         _httpClient = httpClient;
         _baseUrl = baseUrl;
+        _hashedRekordVersion = hashedRekordVersion;
     }
 
     /// <inheritdoc/>
@@ -46,7 +48,7 @@ public sealed class RekorClient : IRekorClient
         string body = JsonSerializer.Serialize(new
         {
             kind = "hashedrekord",
-            apiVersion = "0.0.1",
+            apiVersion = _hashedRekordVersion,
             spec = new
             {
                 signature = new
@@ -60,7 +62,7 @@ public sealed class RekorClient : IRekorClient
                 }
             }
         });
-        return PostEntryAsync(body, "hashedrekord", "0.0.1", cancellationToken);
+        return PostEntryAsync(body, "hashedrekord", _hashedRekordVersion, cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -156,9 +158,33 @@ public sealed class RekorClient : IRekorClient
         }
 
         long logIndex = entry.GetProperty("logIndex").GetInt64();
-        long integratedTime = entry.GetProperty("integratedTime").GetInt64();
+        long integratedTime = 0;
+        if (entry.TryGetProperty("integratedTime", out JsonElement itEl))
+        {
+            integratedTime = itEl.GetInt64();
+        }
         string logId = entry.GetProperty("logID").GetString() ?? string.Empty;
         string body = entry.GetProperty("body").GetString() ?? string.Empty;
+
+        // Parse actual kind/version from the canonicalized body
+        try
+        {
+            byte[] decodedBody = Convert.FromBase64String(body);
+            using JsonDocument bodyDoc = JsonDocument.Parse(decodedBody);
+            JsonElement bodyRoot = bodyDoc.RootElement;
+            if (bodyRoot.TryGetProperty("kind", out JsonElement bodyKind))
+            {
+                kind = bodyKind.GetString() ?? kind;
+            }
+            if (bodyRoot.TryGetProperty("apiVersion", out JsonElement bodyVersion))
+            {
+                apiVersion = bodyVersion.GetString() ?? apiVersion;
+            }
+        }
+        catch (Exception)
+        {
+            // Use the passed-in defaults
+        }
 
         string setB64 = string.Empty;
         if (entry.TryGetProperty("verification", out JsonElement verification) &&
@@ -167,16 +193,13 @@ public sealed class RekorClient : IRekorClient
             setB64 = setElement.GetString() ?? string.Empty;
         }
 
-        if (string.IsNullOrEmpty(setB64))
-        {
-            throw new RekorException("Rekor response is missing the inclusion promise (signedEntryTimestamp).");
-        }
-
         byte[] logIdBytes = string.IsNullOrEmpty(logId)
             ? Array.Empty<byte>()
             : Convert.FromHexString(logId);
 
-        byte[] setBytes = Convert.FromBase64String(setB64);
+        byte[] setBytes = string.IsNullOrEmpty(setB64)
+            ? Array.Empty<byte>()
+            : Convert.FromBase64String(setB64);
         byte[] bodyBytes = Convert.FromBase64String(body);
 
         TransparencyLogEntry result = new TransparencyLogEntry
@@ -186,11 +209,15 @@ public sealed class RekorClient : IRekorClient
             IntegratedTime = integratedTime,
             KindVersion = new KindVersion { Kind = kind, Version = apiVersion },
             CanonicalizedBody = ByteString.CopyFrom(bodyBytes),
-            InclusionPromise = new InclusionPromise
+        };
+
+        if (setBytes.Length > 0)
+        {
+            result.InclusionPromise = new InclusionPromise
             {
                 SignedEntryTimestamp = ByteString.CopyFrom(setBytes)
-            }
-        };
+            };
+        }
 
         // Parse inclusion proof if present
         if (verification.ValueKind != JsonValueKind.Undefined &&

@@ -179,7 +179,7 @@ public sealed class RekorClient : IRekorClient
         byte[] setBytes = Convert.FromBase64String(setB64);
         byte[] bodyBytes = Convert.FromBase64String(body);
 
-        return new TransparencyLogEntry
+        TransparencyLogEntry result = new TransparencyLogEntry
         {
             LogIndex = logIndex,
             LogId = new Dev.Sigstore.Common.V1.LogId { KeyId = ByteString.CopyFrom(logIdBytes) },
@@ -191,6 +191,57 @@ public sealed class RekorClient : IRekorClient
                 SignedEntryTimestamp = ByteString.CopyFrom(setBytes)
             }
         };
+
+        // Parse inclusion proof if present
+        if (verification.ValueKind != JsonValueKind.Undefined &&
+            verification.TryGetProperty("inclusionProof", out JsonElement proofEl))
+        {
+            InclusionProof proof = new InclusionProof();
+            if (proofEl.TryGetProperty("logIndex", out JsonElement pLogIdx))
+            {
+                proof.LogIndex = pLogIdx.GetInt64();
+            }
+
+            if (proofEl.TryGetProperty("treeSize", out JsonElement pTreeSize))
+            {
+                proof.TreeSize = pTreeSize.GetInt64();
+            }
+
+            if (proofEl.TryGetProperty("rootHash", out JsonElement pRootHash))
+            {
+                string? rh = pRootHash.GetString();
+                if (!string.IsNullOrEmpty(rh))
+                {
+                    proof.RootHash = ByteString.CopyFrom(Convert.FromBase64String(rh));
+                }
+            }
+
+            if (proofEl.TryGetProperty("hashes", out JsonElement pHashes) &&
+                pHashes.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement h in pHashes.EnumerateArray())
+                {
+                    string? hv = h.GetString();
+                    if (!string.IsNullOrEmpty(hv))
+                    {
+                        proof.Hashes.Add(ByteString.CopyFrom(Convert.FromBase64String(hv)));
+                    }
+                }
+            }
+
+            if (proofEl.TryGetProperty("checkpoint", out JsonElement pCheckpoint))
+            {
+                string? ckpt = pCheckpoint.GetString();
+                if (!string.IsNullOrEmpty(ckpt))
+                {
+                    proof.Checkpoint = new Dev.Sigstore.Rekor.V1.Checkpoint { Envelope = ckpt };
+                }
+            }
+
+            result.InclusionProof = proof;
+        }
+
+        return result;
     }
 
     private static string ConvertToPemBase64(X509Certificate2 cert)

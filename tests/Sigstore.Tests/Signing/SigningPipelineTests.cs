@@ -251,16 +251,24 @@ public sealed class SigningPipelineTests
         byte[] spki = rekorKey.ExportSubjectPublicKeyInfo();
         byte[] logIdBytes = SHA256.HashData(spki);
 
+        byte[] body = Encoding.UTF8.GetBytes("body");
+        byte[] leafHash = Sigstore.Rekor.MerkleProof.HashLeaf(body);
         return new TransparencyLogEntry
         {
-            LogIndex = 1,
+            LogIndex = 0,
             LogId = new LogId { KeyId = ByteString.CopyFrom(logIdBytes) },
             IntegratedTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             KindVersion = new KindVersion { Kind = "hashedrekord", Version = "0.0.1" },
-            CanonicalizedBody = ByteString.CopyFrom(Encoding.UTF8.GetBytes("body")),
+            CanonicalizedBody = ByteString.CopyFrom(body),
             InclusionPromise = new InclusionPromise
             {
                 SignedEntryTimestamp = ByteString.CopyFrom(new byte[] { 0x01, 0x02, 0x03 })
+            },
+            InclusionProof = new InclusionProof
+            {
+                LogIndex = 0,
+                TreeSize = 1,
+                RootHash = ByteString.CopyFrom(leafHash),
             }
         };
     }

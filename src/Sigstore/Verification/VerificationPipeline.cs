@@ -84,8 +84,10 @@ public sealed class VerificationPipeline
         steps.Add("Step 4: Identity policy matched issuer and subject material.");
 
         TransparencyLogEntry tlogEntry = ExtractTransparencyLogEntry(model);
+        RequireInclusionProofIfNeeded(bundle.MediaType, tlogEntry);
         VerifyCanonicalizedBody(tlogEntry, model);
         ValidateCertificateTiming(leaf, tlogEntry, model);
+        ValidateTimestamps(model, trustedRoot);
         steps.Add("Step 5: Certificate validity window is consistent with Rekor integrated time and/or RFC 3161 countersignatures.");
 
         _transparencyLogVerifier.VerifyTransparencyLogEntry(tlogEntry, trustedRoot, steps);
@@ -117,12 +119,18 @@ public sealed class VerificationPipeline
 
         BundleProto model = bundle.Model;
 
-        // Load the public key into a temporary self-signed cert for SignatureVerifier compatibility
+        // Load the public key
         using ECDsa? ecKey = TryLoadEcdsaFromPem(publicKeyPem);
         using RSA? rsaKey = ecKey is null ? TryLoadRsaFromPem(publicKeyPem) : null;
+        if (ecKey is null && rsaKey is null)
+        {
+            throw new SignatureVerificationException("Step 8 (signature): unsupported or invalid public key.");
+        }
 
         TransparencyLogEntry tlogEntry = ExtractTransparencyLogEntry(model);
+        RequireInclusionProofIfNeeded(bundle.MediaType, tlogEntry);
         VerifyCanonicalizedBody(tlogEntry, model);
+        ValidateTimestamps(model, trustedRoot);
         steps.Add("Step 5: Skipped certificate timing (managed-key mode).");
 
         _transparencyLogVerifier.VerifyTransparencyLogEntry(tlogEntry, trustedRoot, steps);
@@ -348,6 +356,25 @@ public sealed class VerificationPipeline
         }
     }
 
+    private static void RequireInclusionProofIfNeeded(string mediaType, TransparencyLogEntry entry)
+    {
+        // Per the Sigstore spec, bundle v0.2+ requires an inclusion proof.
+        bool isV2Plus = mediaType.Contains("0.2", StringComparison.Ordinal)
+            || mediaType.Contains("0.3", StringComparison.Ordinal);
+
+        if (!isV2Plus)
+        {
+            return;
+        }
+
+        InclusionProof? proof = entry.InclusionProof;
+        if (proof is null || proof.TreeSize == 0)
+        {
+            throw new TransparencyLogException(
+                "Step 6 (transparency log): bundle version 0.2+ requires an inclusion proof (inclusion promise is insufficient).");
+        }
+    }
+
     private static TransparencyLogEntry ExtractTransparencyLogEntry(BundleProto model)
     {
         VerificationMaterial? material = model.VerificationMaterial;
@@ -370,6 +397,8 @@ public sealed class VerificationPipeline
     {
         DateTimeOffset notBefore = new DateTimeOffset(leaf.NotBefore.ToUniversalTime());
         DateTimeOffset notAfter = new DateTimeOffset(leaf.NotAfter.ToUniversalTime());
+        bool hasValidIntegratedTime = false;
+        bool hasValidTimestamp = false;
 
         if (entry.IntegratedTime > 0)
         {
@@ -385,7 +414,7 @@ public sealed class VerificationPipeline
                 throw new CertificateValidationException("Step 5 (validity window): Rekor integrated time is outside the leaf certificate validity period.");
             }
 
-            return;
+            hasValidIntegratedTime = true;
         }
 
         VerificationMaterial? material = model.VerificationMaterial;
@@ -402,18 +431,325 @@ public sealed class VerificationPipeline
                 if (TryGetPkcs9SigningTime(ts.SignedTimestamp.Span, out DateTimeOffset signingTime))
                 {
                     DateTimeOffset t = signingTime.ToUniversalTime();
-                    if (t >= notBefore && t <= notAfter)
+                    if (t < notBefore || t > notAfter)
                     {
-                        return;
+                        throw new CertificateValidationException("Step 5 (validity window): RFC 3161 signing time is outside the leaf certificate validity period.");
                     }
 
-                    throw new CertificateValidationException("Step 5 (validity window): RFC 3161 signing time is outside the leaf certificate validity period.");
+                    hasValidTimestamp = true;
                 }
             }
         }
 
-        // Debug info for timestamp failures
-        throw new CertificateValidationException("Step 5 (validity window): neither Rekor integrated time nor verifiable RFC 3161 timestamps were available.");
+        if (!hasValidIntegratedTime && !hasValidTimestamp)
+        {
+            throw new CertificateValidationException("Step 5 (validity window): neither Rekor integrated time nor verifiable RFC 3161 timestamps were available.");
+        }
+    }
+
+    private static void ValidateTimestamps(BundleProto model, TrustedRoot trustedRoot)
+    {
+        VerificationMaterial? material = model.VerificationMaterial;
+        if (material?.TimestampVerificationData is null)
+        {
+            return;
+        }
+
+        if (trustedRoot.TimestampAuthorities.Count == 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < material.TimestampVerificationData.Rfc3161Timestamps.Count; i++)
+        {
+            RFC3161SignedTimestamp ts = material.TimestampVerificationData.Rfc3161Timestamps[i];
+            if (ts.SignedTimestamp.Length == 0)
+            {
+                continue;
+            }
+
+            byte[] tsBytes = ts.SignedTimestamp.ToByteArray();
+            ReadOnlyMemory<byte> tokenData = new ReadOnlyMemory<byte>(tsBytes);
+
+            // Try to decode as RFC 3161 timestamp token
+            Rfc3161TimestampToken? token = null;
+            if (!Rfc3161TimestampToken.TryDecode(tokenData, out token, out _) || token is null)
+            {
+                ReadOnlyMemory<byte> unwrapped = TryUnwrapTimestampResponse(tsBytes);
+                if (!unwrapped.IsEmpty)
+                {
+                    Rfc3161TimestampToken.TryDecode(unwrapped, out token, out _);
+                }
+            }
+
+            if (token is not null)
+            {
+                // Validate the message imprint matches the bundle signature
+                ValidateTimestampMessageImprint(token, model);
+            }
+
+            // Validate the TSA certificate chain against trusted root
+            // (works with CMS even if RFC 3161 token decoding failed)
+            ValidateTimestampAuthority(token, tsBytes, trustedRoot);
+        }
+    }
+
+    private static void ValidateTimestampMessageImprint(Rfc3161TimestampToken token, BundleProto model)
+    {
+        // The timestamp should be over the bundle's signature bytes
+        byte[]? signatureBytes = null;
+        if (model.ContentCase == BundleProto.ContentOneofCase.MessageSignature)
+        {
+            signatureBytes = model.MessageSignature.Signature.ToByteArray();
+        }
+        else if (model.ContentCase == BundleProto.ContentOneofCase.DsseEnvelope &&
+                 model.DsseEnvelope.Signatures.Count > 0)
+        {
+            signatureBytes = model.DsseEnvelope.Signatures[0].Sig.ToByteArray();
+        }
+
+        if (signatureBytes is null)
+        {
+            return;
+        }
+
+        // Compute the hash of the signature using the same algorithm as the timestamp
+        Oid hashAlgOid = token.TokenInfo.HashAlgorithmId;
+        byte[]? sigHash = null;
+        if (hashAlgOid.Value == "2.16.840.1.101.3.4.2.1" || hashAlgOid.FriendlyName == "SHA256")
+        {
+            sigHash = SHA256.HashData(signatureBytes);
+        }
+        else if (hashAlgOid.Value == "2.16.840.1.101.3.4.2.2" || hashAlgOid.FriendlyName == "SHA384")
+        {
+            sigHash = SHA384.HashData(signatureBytes);
+        }
+        else if (hashAlgOid.Value == "2.16.840.1.101.3.4.2.3" || hashAlgOid.FriendlyName == "SHA512")
+        {
+            sigHash = SHA512.HashData(signatureBytes);
+        }
+
+        if (sigHash is null)
+        {
+            return;
+        }
+
+        if (!sigHash.AsSpan().SequenceEqual(token.TokenInfo.GetMessageHash().Span))
+        {
+            throw new CertificateValidationException(
+                "Step 5 (validity window): RFC 3161 timestamp message imprint does not match the bundle signature.");
+        }
+    }
+
+    private static void ValidateTimestampAuthority(Rfc3161TimestampToken? token, byte[] tsBytes, TrustedRoot trustedRoot)
+    {
+        if (trustedRoot.TimestampAuthorities.Count == 0)
+        {
+            return;
+        }
+
+        // Parse the CMS structure to get signer certificates
+        SignedCms? cms = null;
+        if (token is not null)
+        {
+            cms = token.AsSignedCms();
+        }
+        else
+        {
+            cms = new SignedCms();
+            try
+            {
+                cms.Decode(tsBytes);
+            }
+            catch (CryptographicException)
+            {
+                // Try unwrapping
+                ReadOnlyMemory<byte> unwrapped = TryUnwrapTimestampResponse(tsBytes);
+                if (!unwrapped.IsEmpty)
+                {
+                    try { cms.Decode(unwrapped.ToArray()); }
+                    catch (CryptographicException) { cms = null; }
+                }
+                else
+                {
+                    cms = null;
+                }
+            }
+        }
+
+        if (cms is null)
+        {
+            throw new CertificateValidationException(
+                "Step 5 (validity window): RFC 3161 timestamp could not be parsed for authority validation.");
+        }
+
+        DateTimeOffset? timestampTime = null;
+        if (token is not null)
+        {
+            timestampTime = token.TokenInfo.Timestamp;
+        }
+        else if (TryGetPkcs9SigningTime(tsBytes, out DateTimeOffset st))
+        {
+            timestampTime = st;
+        }
+
+        // Collect all certificate bytes from the CMS (signer + embedded certs)
+        HashSet<string> cmsCertFingerprints = new HashSet<string>(StringComparer.Ordinal);
+        foreach (X509Certificate2 cmsCert in cms.Certificates)
+        {
+            cmsCertFingerprints.Add(Convert.ToHexString(SHA256.HashData(cmsCert.RawData)));
+        }
+
+        foreach (SignerInfo signer in cms.SignerInfos)
+        {
+            if (signer.Certificate is not null)
+            {
+                cmsCertFingerprints.Add(Convert.ToHexString(SHA256.HashData(signer.Certificate.RawData)));
+            }
+        }
+
+        bool hasCmsCerts = cmsCertFingerprints.Count > 0;
+
+        // Try to match the TSA against each trusted timestamp authority
+        bool foundTrustedAuthority = false;
+        string? validityError = null;
+
+        foreach (Dev.Sigstore.Trustroot.V1.CertificateAuthority tsa in trustedRoot.TimestampAuthorities)
+        {
+            if (tsa.CertChain is null || tsa.CertChain.Certificates.Count == 0)
+            {
+                continue;
+            }
+
+            bool matchesThisAuthority = false;
+
+            if (hasCmsCerts)
+            {
+                // Check if any CMS cert matches any cert in the TSA's chain
+                for (int j = 0; j < tsa.CertChain.Certificates.Count; j++)
+                {
+                    byte[] certBytes = tsa.CertChain.Certificates[j].RawBytes.ToByteArray();
+                    string fingerprint = Convert.ToHexString(SHA256.HashData(certBytes));
+
+                    if (cmsCertFingerprints.Contains(fingerprint))
+                    {
+                        matchesThisAuthority = true;
+                        break;
+                    }
+
+#if NET9_0_OR_GREATER
+                    using X509Certificate2 tsaCert = X509CertificateLoader.LoadCertificate(certBytes);
+#else
+                    using X509Certificate2 tsaCert = new X509Certificate2(certBytes);
+#endif
+                    foreach (X509Certificate2 cmsCert in cms.Certificates)
+                    {
+                        if (cmsCert.Issuer == tsaCert.Subject)
+                        {
+                            matchesThisAuthority = true;
+                            break;
+                        }
+                    }
+
+                    if (matchesThisAuthority)
+                    {
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                // No embedded certs: try to verify the CMS using the TSA's leaf cert
+                try
+                {
+                    byte[] leafCertBytes = tsa.CertChain.Certificates[0].RawBytes.ToByteArray();
+                    X509Certificate2Collection tsaCerts = new X509Certificate2Collection();
+#if NET9_0_OR_GREATER
+                    tsaCerts.Add(X509CertificateLoader.LoadCertificate(leafCertBytes));
+#else
+                    tsaCerts.Add(new X509Certificate2(leafCertBytes));
+#endif
+                    for (int j = 1; j < tsa.CertChain.Certificates.Count; j++)
+                    {
+#if NET9_0_OR_GREATER
+                        tsaCerts.Add(X509CertificateLoader.LoadCertificate(
+                            tsa.CertChain.Certificates[j].RawBytes.ToByteArray()));
+#else
+                        tsaCerts.Add(new X509Certificate2(
+                            tsa.CertChain.Certificates[j].RawBytes.ToByteArray()));
+#endif
+                    }
+
+                    cms.CheckSignature(tsaCerts, true);
+                    matchesThisAuthority = true;
+                }
+                catch (CryptographicException)
+                {
+                    // Signature doesn't verify with this TSA's cert
+                }
+            }
+
+            if (!matchesThisAuthority)
+            {
+                continue;
+            }
+
+            // Check if the TSA's validFor window includes the timestamp time
+            if (timestampTime.HasValue && tsa.ValidFor is not null)
+            {
+                if (tsa.ValidFor.Start is not null)
+                {
+                    DateTimeOffset start = tsa.ValidFor.Start.ToDateTimeOffset();
+                    if (timestampTime.Value < start)
+                    {
+                        validityError = "Step 5 (validity window): RFC 3161 timestamp is outside the TSA authority validity window.";
+                        continue;
+                    }
+                }
+
+                if (tsa.ValidFor.End is not null)
+                {
+                    DateTimeOffset end = tsa.ValidFor.End.ToDateTimeOffset();
+                    if (timestampTime.Value > end)
+                    {
+                        validityError = "Step 5 (validity window): RFC 3161 timestamp is outside the TSA authority validity window.";
+                        continue;
+                    }
+                }
+            }
+
+            // Validate CMS signer cert validity at the time of the timestamp
+            if (timestampTime.HasValue)
+            {
+                foreach (SignerInfo signer in cms.SignerInfos)
+                {
+                    if (signer.Certificate is not null)
+                    {
+                        DateTimeOffset certNotBefore = new DateTimeOffset(signer.Certificate.NotBefore.ToUniversalTime());
+                        DateTimeOffset certNotAfter = new DateTimeOffset(signer.Certificate.NotAfter.ToUniversalTime());
+                        if (timestampTime.Value < certNotBefore || timestampTime.Value > certNotAfter)
+                        {
+                            throw new CertificateValidationException(
+                                "Step 5 (validity window): RFC 3161 timestamp is outside the TSA certificate validity period.");
+                        }
+                    }
+                }
+            }
+
+            foundTrustedAuthority = true;
+            break;
+        }
+
+        if (!foundTrustedAuthority)
+        {
+            if (validityError is not null)
+            {
+                throw new CertificateValidationException(validityError);
+            }
+
+            throw new CertificateValidationException(
+                "Step 5 (validity window): RFC 3161 timestamp authority is not trusted by the trusted root.");
+        }
     }
 
     private static bool TryGetPkcs9SigningTime(ReadOnlySpan<byte> pkcs7, out DateTimeOffset signingTime)
@@ -559,7 +895,7 @@ public sealed class VerificationPipeline
 
         // For in-toto statements, the payload is a JSON statement referencing artifacts
         // by digest in a subjects list. Try in-toto subject matching first if the payload
-        // type indicates in-toto; fall back to direct byte comparison.
+        // type indicates in-toto; fall back to direct byte comparison or digest comparison.
         if (string.Equals(envelope.PayloadType, "application/vnd.in-toto+json", StringComparison.Ordinal) &&
             TryVerifyInTotoSubjectDigest(envelope.Payload.Span, expectedArtifact))
         {
@@ -567,7 +903,19 @@ public sealed class VerificationPipeline
         }
         else if (!expectedArtifact.SequenceEqual(envelope.Payload.Span))
         {
-            throw new SignatureVerificationException("Step 8 (signature): provided artifact bytes do not match DSSE payload.");
+            // If artifact is a pre-computed digest, compare against hash of the payload
+            if (expectedArtifact.Length == 32)
+            {
+                byte[] payloadDigest = SHA256.HashData(envelope.Payload.Span);
+                if (!expectedArtifact.SequenceEqual(payloadDigest))
+                {
+                    throw new SignatureVerificationException("Step 8 (signature): provided artifact digest does not match DSSE payload hash.");
+                }
+            }
+            else
+            {
+                throw new SignatureVerificationException("Step 8 (signature): provided artifact bytes do not match DSSE payload.");
+            }
         }
     }
 
@@ -583,23 +931,47 @@ public sealed class VerificationPipeline
                 return false; // not a valid in-toto statement
             }
 
-            byte[] artifactDigest = SHA256.HashData(artifact);
-            string artifactDigestHex = Convert.ToHexString(artifactDigest).ToLowerInvariant();
-
+            // Collect all subject digests to check against
+            List<string> subjectDigests = new List<string>();
             foreach (JsonElement subject in subjects.EnumerateArray())
             {
-                if (!subject.TryGetProperty("digest", out JsonElement digests))
-                {
-                    continue;
-                }
-
-                if (digests.TryGetProperty("sha256", out JsonElement sha256))
+                if (subject.TryGetProperty("digest", out JsonElement digests) &&
+                    digests.TryGetProperty("sha256", out JsonElement sha256))
                 {
                     string? hex = sha256.GetString();
-                    if (string.Equals(hex, artifactDigestHex, StringComparison.OrdinalIgnoreCase))
+                    if (hex is not null)
                     {
-                        return true;
+                        subjectDigests.Add(hex);
                     }
+                }
+            }
+
+            if (subjectDigests.Count == 0)
+            {
+                return false;
+            }
+
+            // If artifact is 32 bytes (SHA-256 digest), it might be a pre-computed digest.
+            // Try both: treat as raw digest, and hash it as artifact bytes.
+            string artifactAsDigestHex = Convert.ToHexString(artifact).ToLowerInvariant();
+            foreach (string subjectHex in subjectDigests)
+            {
+                // Direct comparison: artifact bytes ARE the digest
+                if (artifact.Length == 32 &&
+                    string.Equals(subjectHex, artifactAsDigestHex, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            // Hash the artifact and compare
+            byte[] artifactDigest = SHA256.HashData(artifact);
+            string artifactDigestHex = Convert.ToHexString(artifactDigest).ToLowerInvariant();
+            foreach (string subjectHex in subjectDigests)
+            {
+                if (string.Equals(subjectHex, artifactDigestHex, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
                 }
             }
 
@@ -676,131 +1048,24 @@ public sealed class VerificationPipeline
             using JsonDocument doc = JsonDocument.Parse(bodyJson);
             JsonElement root = doc.RootElement;
 
+            string kind = root.TryGetProperty("kind", out JsonElement kindEl) ? kindEl.GetString() ?? "" : "";
+
             if (!root.TryGetProperty("spec", out JsonElement spec))
             {
                 return;
             }
 
-            // Cross-check artifact hash
-            if (model.ContentCase == BundleProto.ContentOneofCase.MessageSignature &&
-                model.MessageSignature.MessageDigest is not null)
+            switch (kind)
             {
-                if (spec.TryGetProperty("data", out JsonElement data) &&
-                    data.TryGetProperty("hash", out JsonElement hash) &&
-                    hash.TryGetProperty("value", out JsonElement hashValue))
-                {
-                    string? entryHash = hashValue.GetString();
-                    string bundleHash = Convert.ToHexString(
-                        model.MessageSignature.MessageDigest.Digest.Span).ToLowerInvariant();
-                    if (entryHash is not null &&
-                        !string.Equals(entryHash, bundleHash, StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new TransparencyLogException(
-                            "Step 6 (transparency log): canonicalized body hash does not match bundle message digest.");
-                    }
-                }
-            }
-
-            // Cross-check signature — hashedrekord format
-            if (spec.TryGetProperty("signature", out JsonElement sigEl) &&
-                sigEl.TryGetProperty("content", out JsonElement sigContent))
-            {
-                string? entrySig = sigContent.GetString();
-                byte[]? bundleSig = null;
-                if (model.ContentCase == BundleProto.ContentOneofCase.MessageSignature)
-                {
-                    bundleSig = model.MessageSignature.Signature.ToByteArray();
-                }
-                else if (model.ContentCase == BundleProto.ContentOneofCase.DsseEnvelope &&
-                         model.DsseEnvelope.Signatures.Count > 0)
-                {
-                    bundleSig = model.DsseEnvelope.Signatures[0].Sig.ToByteArray();
-                }
-
-                if (entrySig is not null && bundleSig is not null)
-                {
-                    string bundleSigB64 = Convert.ToBase64String(bundleSig);
-                    if (!string.Equals(entrySig, bundleSigB64, StringComparison.Ordinal))
-                    {
-                        throw new TransparencyLogException(
-                            "Step 6 (transparency log): canonicalized body signature does not match bundle signature.");
-                    }
-                }
-            }
-
-            // Cross-check signature — DSSE format (kind: dsse)
-            if (spec.TryGetProperty("signatures", out JsonElement dsseSignatures) &&
-                dsseSignatures.ValueKind == JsonValueKind.Array &&
-                model.ContentCase == BundleProto.ContentOneofCase.DsseEnvelope &&
-                model.DsseEnvelope.Signatures.Count > 0)
-            {
-                byte[] bundleSig = model.DsseEnvelope.Signatures[0].Sig.ToByteArray();
-                string bundleSigB64 = Convert.ToBase64String(bundleSig);
-                bool sigFound = false;
-                foreach (JsonElement dsseSig in dsseSignatures.EnumerateArray())
-                {
-                    if (dsseSig.TryGetProperty("signature", out JsonElement dsseSigValue))
-                    {
-                        string? loggedSig = dsseSigValue.GetString();
-                        if (string.Equals(loggedSig, bundleSigB64, StringComparison.Ordinal))
-                        {
-                            sigFound = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (!sigFound)
-                {
-                    throw new TransparencyLogException(
-                        "Step 6 (transparency log): DSSE signature in tlog entry does not match bundle envelope signature.");
-                }
-            }
-
-            // Cross-check signature — DSSE V002 format (spec.dsseV002.signatures[].content)
-            if (spec.TryGetProperty("dsseV002", out JsonElement dsseV002) &&
-                dsseV002.TryGetProperty("signatures", out JsonElement v002Sigs) &&
-                v002Sigs.ValueKind == JsonValueKind.Array &&
-                model.ContentCase == BundleProto.ContentOneofCase.DsseEnvelope &&
-                model.DsseEnvelope.Signatures.Count > 0)
-            {
-                byte[] bundleSig = model.DsseEnvelope.Signatures[0].Sig.ToByteArray();
-                string bundleSigB64 = Convert.ToBase64String(bundleSig);
-                bool sigFound = false;
-                foreach (JsonElement v002Sig in v002Sigs.EnumerateArray())
-                {
-                    if (v002Sig.TryGetProperty("content", out JsonElement v002Content))
-                    {
-                        string? loggedSig = v002Content.GetString();
-                        if (string.Equals(loggedSig, bundleSigB64, StringComparison.Ordinal))
-                        {
-                            sigFound = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (!sigFound)
-                {
-                    throw new TransparencyLogException(
-                        "Step 6 (transparency log): DSSE V002 signature in tlog entry does not match bundle envelope signature.");
-                }
-            }
-
-            // Cross-check DSSE envelope hash
-            if (spec.TryGetProperty("envelopeHash", out JsonElement envelopeHash) &&
-                envelopeHash.TryGetProperty("value", out JsonElement envHashValue) &&
-                model.ContentCase == BundleProto.ContentOneofCase.DsseEnvelope)
-            {
-                string? loggedHash = envHashValue.GetString();
-                if (loggedHash is not null)
-                {
-                    // Compute the envelope hash from the bundle's DSSE envelope
-                    byte[] pae = Dsse.PreAuthenticationEncoding(
-                        model.DsseEnvelope.PayloadType, model.DsseEnvelope.Payload.Span);
-                    // The envelopeHash might be over the serialized envelope, not PAE
-                    // For now, just verify the signature match above is sufficient
-                }
+                case "hashedrekord":
+                    VerifyHashedRekordBody(spec, model);
+                    break;
+                case "dsse":
+                    VerifyDsseBody(spec, model);
+                    break;
+                case "intoto":
+                    VerifyIntotoBody(spec, model);
+                    break;
             }
         }
         catch (TransparencyLogException)
@@ -810,6 +1075,148 @@ public sealed class VerificationPipeline
         catch (Exception)
         {
             // If we can't parse the body, skip the cross-check
+        }
+    }
+
+    private static void VerifyHashedRekordBody(JsonElement spec, BundleProto model)
+    {
+        // Cross-check artifact hash
+        if (model.ContentCase == BundleProto.ContentOneofCase.MessageSignature &&
+            model.MessageSignature.MessageDigest is not null)
+        {
+            if (spec.TryGetProperty("data", out JsonElement data) &&
+                data.TryGetProperty("hash", out JsonElement hash) &&
+                hash.TryGetProperty("value", out JsonElement hashValue))
+            {
+                string? entryHash = hashValue.GetString();
+                string bundleHash = Convert.ToHexString(
+                    model.MessageSignature.MessageDigest.Digest.Span).ToLowerInvariant();
+                if (entryHash is not null &&
+                    !string.Equals(entryHash, bundleHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new TransparencyLogException(
+                        "Step 6 (transparency log): canonicalized body hash does not match bundle message digest.");
+                }
+            }
+        }
+
+        // Cross-check signature
+        if (spec.TryGetProperty("signature", out JsonElement sigEl) &&
+            sigEl.TryGetProperty("content", out JsonElement sigContent))
+        {
+            CompareSignature(sigContent.GetString(), model);
+        }
+    }
+
+    private static void VerifyDsseBody(JsonElement spec, BundleProto model)
+    {
+        if (model.ContentCase != BundleProto.ContentOneofCase.DsseEnvelope)
+        {
+            return;
+        }
+
+        // dsse v0.0.1: spec.signatures[].signature
+        if (spec.TryGetProperty("signatures", out JsonElement sigs) &&
+            sigs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement sig in sigs.EnumerateArray())
+            {
+                if (sig.TryGetProperty("signature", out JsonElement sigVal))
+                {
+                    CompareSignature(sigVal.GetString(), model);
+                    return;
+                }
+            }
+        }
+
+        // dsse v0.0.2: spec.dsseV002.signatures[].content
+        if (spec.TryGetProperty("dsseV002", out JsonElement v002))
+        {
+            if (v002.TryGetProperty("signatures", out JsonElement sigs2) &&
+                sigs2.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement sig in sigs2.EnumerateArray())
+                {
+                    if (sig.TryGetProperty("content", out JsonElement sigVal))
+                    {
+                        CompareSignature(sigVal.GetString(), model);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    private static void VerifyIntotoBody(JsonElement spec, BundleProto model)
+    {
+        if (model.ContentCase != BundleProto.ContentOneofCase.DsseEnvelope)
+        {
+            return;
+        }
+
+        // intoto v0.0.2: spec.content.envelope.signatures[].sig
+        // The sig field is double base64-encoded: base64(base64(raw_sig_bytes))
+        if (spec.TryGetProperty("content", out JsonElement content) &&
+            content.TryGetProperty("envelope", out JsonElement envelope) &&
+            envelope.TryGetProperty("signatures", out JsonElement sigs) &&
+            sigs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement sig in sigs.EnumerateArray())
+            {
+                if (sig.TryGetProperty("sig", out JsonElement sigVal))
+                {
+                    string? entrySigDoubleB64 = sigVal.GetString();
+                    if (entrySigDoubleB64 is null)
+                    {
+                        continue;
+                    }
+
+                    // Decode one level of base64 to get the actual base64 sig string
+                    string entrySigB64;
+                    try
+                    {
+                        entrySigB64 = System.Text.Encoding.ASCII.GetString(
+                            Convert.FromBase64String(entrySigDoubleB64));
+                    }
+                    catch (FormatException)
+                    {
+                        // Not double-encoded, use as-is
+                        entrySigB64 = entrySigDoubleB64;
+                    }
+
+                    CompareSignature(entrySigB64, model);
+                    return;
+                }
+            }
+        }
+    }
+
+    private static void CompareSignature(string? entrySig, BundleProto model)
+    {
+        if (entrySig is null)
+        {
+            return;
+        }
+
+        byte[]? bundleSig = null;
+        if (model.ContentCase == BundleProto.ContentOneofCase.MessageSignature)
+        {
+            bundleSig = model.MessageSignature.Signature.ToByteArray();
+        }
+        else if (model.ContentCase == BundleProto.ContentOneofCase.DsseEnvelope &&
+                 model.DsseEnvelope.Signatures.Count > 0)
+        {
+            bundleSig = model.DsseEnvelope.Signatures[0].Sig.ToByteArray();
+        }
+
+        if (bundleSig is not null)
+        {
+            string bundleSigB64 = Convert.ToBase64String(bundleSig);
+            if (!string.Equals(entrySig, bundleSigB64, StringComparison.Ordinal))
+            {
+                throw new TransparencyLogException(
+                    "Step 6 (transparency log): canonicalized body signature does not match bundle signature.");
+            }
         }
     }
 }

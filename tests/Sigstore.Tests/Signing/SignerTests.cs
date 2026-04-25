@@ -171,16 +171,24 @@ public sealed class SignerTests
         byte[] sig = rekorKey.SignData(Encoding.UTF8.GetBytes(signedRegion), HashAlgorithmName.SHA256);
         string noteText = noteBody + "\n— rekor.example.com/test " + Convert.ToBase64String(sig) + "\n";
 
+        byte[] body = Encoding.UTF8.GetBytes("body");
+        byte[] leafHash = Sigstore.Rekor.MerkleProof.HashLeaf(body);
         return new TransparencyLogEntry
         {
-            LogIndex = 1,
+            LogIndex = 0,
             LogId = new LogId { KeyId = ByteString.CopyFrom(logIdBytes) },
             IntegratedTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             KindVersion = new KindVersion { Kind = "hashedrekord", Version = "0.0.1" },
-            CanonicalizedBody = ByteString.CopyFrom(Encoding.UTF8.GetBytes("body")),
+            CanonicalizedBody = ByteString.CopyFrom(body),
             InclusionPromise = new InclusionPromise
             {
                 SignedEntryTimestamp = ByteString.CopyFrom(Encoding.UTF8.GetBytes(noteText))
+            },
+            InclusionProof = new InclusionProof
+            {
+                LogIndex = 0,
+                TreeSize = 1,
+                RootHash = ByteString.CopyFrom(leafHash),
             }
         };
     }

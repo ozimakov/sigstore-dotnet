@@ -166,27 +166,36 @@ public sealed class SignerTests
         byte[] spki = rekorKey.ExportSubjectPublicKeyInfo();
         byte[] logIdBytes = SHA256.HashData(spki);
 
-        string noteBody = "rekor.example.com/test\n1\nabcdef\n";
-        string signedRegion = noteBody[..^1];
-        byte[] sig = rekorKey.SignData(Encoding.UTF8.GetBytes(signedRegion), HashAlgorithmName.SHA256);
-        string noteText = noteBody + "\n— rekor.example.com/test " + Convert.ToBase64String(sig) + "\n";
-
         byte[] body = Encoding.UTF8.GetBytes("body");
         byte[] leafHash = Sigstore.Rekor.MerkleProof.HashLeaf(body);
+        long integratedTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        long logIndex = 0;
+
+        string logIdHex = Convert.ToHexString(logIdBytes).ToLowerInvariant();
+        string bodyB64 = Convert.ToBase64String(body);
+        string setPayload = "{" +
+            "\"body\":\"" + bodyB64 + "\"," +
+            "\"integratedTime\":" + integratedTime + "," +
+            "\"logID\":\"" + logIdHex + "\"," +
+            "\"logIndex\":" + logIndex +
+            "}";
+        byte[] setSignature = rekorKey.SignData(
+            Encoding.UTF8.GetBytes(setPayload), HashAlgorithmName.SHA256);
+
         return new TransparencyLogEntry
         {
-            LogIndex = 0,
+            LogIndex = logIndex,
             LogId = new LogId { KeyId = ByteString.CopyFrom(logIdBytes) },
-            IntegratedTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            IntegratedTime = integratedTime,
             KindVersion = new KindVersion { Kind = "hashedrekord", Version = "0.0.1" },
             CanonicalizedBody = ByteString.CopyFrom(body),
             InclusionPromise = new InclusionPromise
             {
-                SignedEntryTimestamp = ByteString.CopyFrom(Encoding.UTF8.GetBytes(noteText))
+                SignedEntryTimestamp = ByteString.CopyFrom(setSignature)
             },
             InclusionProof = new InclusionProof
             {
-                LogIndex = 0,
+                LogIndex = logIndex,
                 TreeSize = 1,
                 RootHash = ByteString.CopyFrom(leafHash),
             }

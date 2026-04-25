@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Dev.Sigstore.Rekor.V1;
 using Dev.Sigstore.Trustroot.V1;
 using Sigstore.Exceptions;
@@ -69,14 +71,14 @@ public sealed class TransparencyLogVerifier : ITransparencyLogVerifier
             }
         }
 
-        // Note: The SET (Signed Entry Timestamp) is a raw signature over the canonicalized
-        // log entry, not a signed note. Full cryptographic SET verification requires
-        // reconstructing the canonicalized entry payload. For now, SET presence is accepted
-        // as a weaker signal when no inclusion proof is available.
+        if (hasInclusionPromise)
+        {
+            VerifySignedEntryTimestamp(entry, spki);
+        }
 
         auditTrail.Add(hasInclusionProof
-            ? "Step 6: Verified Rekor inclusion proof."
-            : "Step 6: Accepted Rekor inclusion promise (SET) without cryptographic verification.");
+            ? "Step 6: Verified Rekor inclusion proof and SET."
+            : "Step 6: Verified Rekor inclusion promise (SET).");
     }
 
     /// <summary>
@@ -125,6 +127,70 @@ public sealed class TransparencyLogVerifier : ITransparencyLogVerifier
         if (treeSize != expectedTreeSize)
         {
             throw new TransparencyLogException("Step 6 (transparency log): checkpoint tree size does not match inclusion proof tree size.");
+        }
+    }
+
+    private static void VerifySignedEntryTimestamp(TransparencyLogEntry entry, byte[] spki)
+    {
+        byte[] setSignature = entry.InclusionPromise!.SignedEntryTimestamp.ToByteArray();
+        if (setSignature.Length == 0)
+        {
+            return;
+        }
+
+        // Reconstruct the canonicalized entry payload that the SET signs.
+        // Format: {"body":"<base64>","integratedTime":<int>,"logID":"<hex>","logIndex":<int>}
+        string bodyB64 = Convert.ToBase64String(entry.CanonicalizedBody.ToByteArray());
+        string logIdHex = Convert.ToHexString(entry.LogId.KeyId.Span).ToLowerInvariant();
+
+        string payload = "{" +
+            "\"body\":\"" + bodyB64 + "\"," +
+            "\"integratedTime\":" + entry.IntegratedTime + "," +
+            "\"logID\":\"" + logIdHex + "\"," +
+            "\"logIndex\":" + entry.LogIndex +
+            "}";
+
+        byte[] payloadBytes = Encoding.UTF8.GetBytes(payload);
+
+        // Verify the SET signature using the Rekor key
+        string algorithmOid = SignedNoteVerifier.ExtractAlgorithmOid(spki);
+        bool verified = false;
+
+        if (algorithmOid == "1.2.840.10045.2.1") // ECDSA
+        {
+            try
+            {
+                using ECDsa key = ECDsa.Create();
+                key.ImportSubjectPublicKeyInfo(spki, out _);
+                verified = key.VerifyData(payloadBytes, setSignature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence)
+                    || key.VerifyData(payloadBytes, setSignature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+            }
+            catch (CryptographicException)
+            {
+                // fall through
+            }
+        }
+        else if (algorithmOid == "1.3.101.112") // Ed25519
+        {
+            try
+            {
+                var pubKey = (Org.BouncyCastle.Crypto.Parameters.Ed25519PublicKeyParameters)
+                    Org.BouncyCastle.Security.PublicKeyFactory.CreateKey(spki);
+                var signer = new Org.BouncyCastle.Crypto.Signers.Ed25519Signer();
+                signer.Init(false, pubKey);
+                signer.BlockUpdate(payloadBytes, 0, payloadBytes.Length);
+                verified = signer.VerifySignature(setSignature);
+            }
+            catch (Exception)
+            {
+                // fall through
+            }
+        }
+
+        if (!verified)
+        {
+            throw new TransparencyLogException(
+                "Step 6 (transparency log): Signed Entry Timestamp (SET) signature verification failed.");
         }
     }
 

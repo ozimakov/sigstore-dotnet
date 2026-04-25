@@ -225,7 +225,7 @@ public static class SignedNoteVerifier
         return null;
     }
 
-    private static string ExtractAlgorithmOid(ReadOnlySpan<byte> spkiDer)
+    internal static string ExtractAlgorithmOid(ReadOnlySpan<byte> spkiDer)
     {
         try
         {

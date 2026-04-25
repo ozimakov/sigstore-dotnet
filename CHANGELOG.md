@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-04-25
+
+### Added
+
+- **TSA timestamp validation** — verify RFC 3161 message imprint matches bundle signature, validate TSA certificate chain against trusted root timestamp authorities, enforce TSA authority and certificate validity windows
+- **SCT validation** — verify that SCT log IDs in the leaf certificate match a trusted CT log in the trusted root
+- **SET (Signed Entry Timestamp) verification** — cryptographically verify the SET signature against the Rekor public key using the canonical entry payload
+- **DSSE/intoto canonicalizedBody cross-check** — verify signatures in tlog entries for `dsse` v0.0.1/v0.0.2 and `intoto` v0.0.2 entry types (in addition to existing `hashedrekord` support)
+- **Multi-signer checkpoint support** — iterate all signature lines in signed note checkpoints; support C2SP key hint format for Ed25519 keys
+- **Inclusion proof requirement** — bundle v0.2+ requires an inclusion proof (inclusion promise alone is insufficient)
+
+### Fixed
+
+- **DIGEST mode for DSSE/in-toto** — pre-computed digests (`sha256:<hex>`) now correctly match against in-toto statement subjects without re-hashing
+- **Managed-key wrong key in DIGEST mode** — detect invalid/unsupported keys upfront instead of silently accepting digest-only verification
+- **Strict key hint validation** — reject checkpoint signatures with key hints that don't match any trusted log key
+- **intoto double-base64 signatures** — correctly decode double-base64-encoded signatures in intoto v0.0.2 tlog entries
+
+### Changed
+
+- Conformance verification tests: **128 passed, 0 xfailed** (was 104 passed, 28 xfailed)
+- Signing conformance tests skipped pending staging/signing-config support
+- Conformance workflow: added `timeout-minutes: 15` to prevent runaway jobs from OIDC beacon downtime
+
 ## [0.4.0] — 2026-04-24
 
 ### Added
@@ -73,7 +97,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-target support for .NET 8, 9, and 10
 - `Sigstore.Net.Conformance` — CLI tool implementing the [sigstore-conformance](https://github.com/sigstore/sigstore-conformance) test protocol, published as a .NET global tool
 
-[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.1.0...v0.2.0

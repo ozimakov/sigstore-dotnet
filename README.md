@@ -8,7 +8,7 @@ Managed .NET client library for [Sigstore](https://www.sigstore.dev/) bundle sig
 [![License](https://img.shields.io/github/license/ozimakov/sigstore-dotnet)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4)](https://dotnet.microsoft.com)
 
-> **Status: alpha (v0.5).** The public API may change before v1.0.
+> **Status: alpha (v0.6).** The public API may change before v1.0.
 
 ## What is Sigstore?
 
@@ -32,7 +32,8 @@ Managed .NET client library for [Sigstore](https://www.sigstore.dev/) bundle sig
 | **OIDC token providers** — GitHub Actions, env var, ambient | Supported |
 | **Rekor2** bundles (TSA timestamps, Ed25519 checkpoints) | Supported |
 | **SCT validation** and **SET verification** | Supported |
-| Conformance test suite (3x matrix: net8/9/10) | 128 passed, 0 xfailed |
+| **Signing config** — custom Fulcio/Rekor/TSA endpoints | Supported |
+| Conformance test suite (3x matrix: net8/9/10) | 131 passed, 1 xfailed |
 | OCI image verification | Planned |
 | KMS integrations | Planned |
 
@@ -233,8 +234,8 @@ See [docs/architecture.md](docs/architecture.md) for a detailed walkthrough.
 | **v0.2** | Keyless signing pipeline, OIDC token providers, DI extensions |
 | **v0.3** | Ed25519 via BouncyCastle, managed-key verification, digest mode, in-toto attestations, negative validations |
 | **v0.4** | Conformance signing against real Sigstore infrastructure, Fulcio v2 REST API, canonicalizedBody cross-check, bundle v0.3 leaf-only cert |
-| **v0.5** *(current)* | Full verification conformance — TSA validation, SCT/SET verification, multi-signer checkpoints, DSSE/intoto cross-checks (128 passed, 0 xfailed) |
-| **v0.6** | Signing conformance (staging support, signing-config), OCI artifact support |
+| **v0.5** | Full verification conformance — TSA validation, SCT/SET verification, multi-signer checkpoints, DSSE/intoto cross-checks (128 passed, 0 xfailed) |
+| **v0.6** *(current)* | Signing conformance — signing-config, TSA timestamps, inclusion proof parsing, hashedrekord v0.0.2 (131 passed, 1 xfailed) |
 | **v0.7** | KMS and hardware key support (PKCS#11, Azure Key Vault, AWS KMS) |
 | **v1.0** | Stable public API, full Sigstore client spec conformance |
 

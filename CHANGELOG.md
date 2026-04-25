@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-04-25
+
+### Added
+
+- **Signing config support** — `--signing-config` and `--trusted-root` CLI arguments for the `sign-bundle` command; extract Fulcio, Rekor, and TSA URLs from the SigningConfig protobuf
+- **TSA timestamp requesting** — when a TSA URL is configured, request an RFC 3161 timestamp over the bundle signature and include it in `timestampVerificationData`
+- **Inclusion proof parsing from Rekor** — parse `inclusionProof` (logIndex, treeSize, rootHash, hashes, checkpoint) from the Rekor v1 API response
+- **hashedrekord v0.0.2 support** — select hashedrekord version based on signing config `majorApiVersion`; parse actual kind/version from Rekor response body
+
+### Changed
+
+- Rekor SET (inclusionPromise) is now optional — Rekor v2 uses TSA timestamps instead
+- `integratedTime` is now optional in Rekor response parsing — Rekor v2 may omit it
+- Signing conformance re-enabled — `test_simple` and `test_sign_does_not_produce_root` pass
+- Conformance: **131 passed, 1 xfailed** (`test_sign_verify_rekor2` — staging Rekor v2 uses a different API protocol)
+
 ## [0.5.0] — 2026-04-25
 
 ### Added
@@ -97,7 +113,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-target support for .NET 8, 9, and 10
 - `Sigstore.Net.Conformance` — CLI tool implementing the [sigstore-conformance](https://github.com/sigstore/sigstore-conformance) test protocol, published as a .NET global tool
 
-[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.2.0...v0.3.0

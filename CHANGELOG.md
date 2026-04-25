@@ -15,13 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **TSA timestamp requesting** — when a TSA URL is configured, request an RFC 3161 timestamp over the bundle signature and include it in `timestampVerificationData`
 - **Inclusion proof parsing from Rekor** — parse `inclusionProof` (logIndex, treeSize, rootHash, hashes, checkpoint) from the Rekor v1 API response
 - **hashedrekord v0.0.2 support** — select hashedrekord version based on signing config `majorApiVersion`; parse actual kind/version from Rekor response body
+- **Rekor v2 API client** — POST to `/api/v2/log/entries` with `hashedRekordRequestV002` JSON schema; parse protobuf-style JSON responses with string-typed integers, base64 hashes, and nested objects
 
 ### Changed
 
-- Rekor SET (inclusionPromise) is now optional — Rekor v2 uses TSA timestamps instead
-- `integratedTime` is now optional in Rekor response parsing — Rekor v2 may omit it
+- Rekor SET (inclusionPromise) and `integratedTime` are now optional — Rekor v2 uses TSA timestamps instead
+- Rekor response parser handles both v1 (hex hashes, `{"uuid": {...}}` wrapper) and v2 (base64 hashes, direct entry object) formats
 - Signing conformance re-enabled — `test_simple` and `test_sign_does_not_produce_root` pass
-- Conformance: **131 passed, 1 xfailed** (`test_sign_verify_rekor2` — staging Rekor v2 uses a different API protocol)
+- Conformance: **131 passed, 1 xfailed** (`test_sign_verify_rekor2` — bundle format interop with sigstore-python selftest)
 
 ## [0.5.0] — 2026-04-25
 

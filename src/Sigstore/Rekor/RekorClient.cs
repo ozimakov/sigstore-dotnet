@@ -45,23 +45,51 @@ public sealed class RekorClient : IRekorClient
         string sigB64 = Convert.ToBase64String(signature);
         string certPem = ConvertToPemBase64(leafCert);
 
-        string body = JsonSerializer.Serialize(new
+        string body;
+        if (_hashedRekordVersion == "0.0.2")
         {
-            kind = "hashedrekord",
-            apiVersion = _hashedRekordVersion,
-            spec = new
+            // Rekor v2 API format: /api/v2/log/entries
+            string digestB64 = Convert.ToBase64String(artifactDigest);
+            string certDerB64 = Convert.ToBase64String(leafCert.RawData);
+            body = JsonSerializer.Serialize(new
             {
-                signature = new
+                hashedRekordRequestV002 = new
                 {
-                    content = sigB64,
-                    publicKey = new { content = certPem }
-                },
-                data = new
-                {
-                    hash = new { algorithm = "sha256", value = hexDigest }
+                    digest = digestB64,
+                    signature = new
+                    {
+                        content = sigB64,
+                        verifier = new
+                        {
+                            x509Certificate = new { rawBytes = certDerB64 },
+                            keyDetails = "PKIX_ECDSA_P256_SHA_256"
+                        }
+                    }
                 }
-            }
-        });
+            });
+        }
+        else
+        {
+            // Rekor v1 API format: /api/v1/log/entries
+            body = JsonSerializer.Serialize(new
+            {
+                kind = "hashedrekord",
+                apiVersion = _hashedRekordVersion,
+                spec = new
+                {
+                    signature = new
+                    {
+                        content = sigB64,
+                        publicKey = new { content = certPem }
+                    },
+                    data = new
+                    {
+                        hash = new { algorithm = "sha256", value = hexDigest }
+                    }
+                }
+            });
+        }
+
         return PostEntryAsync(body, "hashedrekord", _hashedRekordVersion, cancellationToken);
     }
 
@@ -95,7 +123,8 @@ public sealed class RekorClient : IRekorClient
 
     private async Task<TransparencyLogEntry> PostEntryAsync(string bodyJson, string kind, string apiVersion, CancellationToken cancellationToken)
     {
-        Uri endpoint = new Uri(_baseUrl, "api/v1/log/entries");
+        string apiPath = _hashedRekordVersion == "0.0.2" ? "api/v2/log/entries" : "api/v1/log/entries";
+        Uri endpoint = new Uri(_baseUrl, apiPath);
         using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, endpoint);
         request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
 
@@ -141,15 +170,26 @@ public sealed class RekorClient : IRekorClient
 
     private static TransparencyLogEntry ParseTransparencyLogEntryCore(string json, string kind, string apiVersion)
     {
-        // Response is {"<uuid>": {...entry fields...}}
+        // v1 response is {"<uuid>": {...entry fields...}}
+        // v2 response may be a direct entry object or protobuf-compatible JSON
         using JsonDocument doc = JsonDocument.Parse(json);
         JsonElement root = doc.RootElement;
 
-        JsonElement entry = default;
-        foreach (JsonProperty prop in root.EnumerateObject())
+        JsonElement entry;
+        if (root.TryGetProperty("logIndex", out _) || root.TryGetProperty("logId", out _))
         {
-            entry = prop.Value;
-            break;
+            // Direct entry object (v2 format or protobuf JSON)
+            entry = root;
+        }
+        else
+        {
+            // Wrapped format: {"<uuid>": {...}}
+            entry = default;
+            foreach (JsonProperty prop in root.EnumerateObject())
+            {
+                entry = prop.Value;
+                break;
+            }
         }
 
         if (entry.ValueKind == JsonValueKind.Undefined)
@@ -157,7 +197,15 @@ public sealed class RekorClient : IRekorClient
             throw new RekorException("Rekor response is empty.");
         }
 
-        long logIndex = entry.GetProperty("logIndex").GetInt64();
+        // Try protobuf-style field names first, then v1-style
+        long logIndex = 0;
+        if (entry.TryGetProperty("logIndex", out JsonElement liEl))
+        {
+            if (liEl.ValueKind == JsonValueKind.String)
+                long.TryParse(liEl.GetString(), out logIndex);
+            else
+                logIndex = liEl.GetInt64();
+        }
         long integratedTime = 0;
         if (entry.TryGetProperty("integratedTime", out JsonElement itEl))
         {

@@ -39,8 +39,6 @@ jobs:
         with:
           entrypoint: ${{ github.workspace }}/sigstore-tool/sigstore-dotnet
           skip-cpython-release-tests: true
-          # test_sign_verify_rekor2: staging Rekor v2 returns HTTP 400 — needs endpoint investigation
-          xfail: 'test_sign_verify_rekor2'
 
       - name: Upload conformance logs
         if: always()

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-04-26
+
+### Added
+
+- **Cosign interop tests** — sign with cosign `sign-blob --new-bundle-format` and verify with .NET; sign with .NET and verify with cosign `verify-blob`; digest-mode cross-verification. Total: 15 interop test cases across cosign, sigstore-python, and .NET.
+- **OCI / container image documentation** — following the sigstore-java and sigstore-python model, OCI container image signing is handled by cosign; documented the cosign integration workflow in the README with examples
+
 ## [0.8.1] — 2026-04-26
 
 ### Added
@@ -143,7 +150,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-target support for .NET 8, 9, and 10
 - `Sigstore.Net.Conformance` — CLI tool implementing the [sigstore-conformance](https://github.com/sigstore/sigstore-conformance) test protocol, published as a .NET global tool
 
-[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.6.0...v0.7.0

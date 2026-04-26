@@ -9,7 +9,7 @@ Managed .NET client library for [Sigstore](https://www.sigstore.dev/) bundle sig
 [![License](https://img.shields.io/github/license/ozimakov/sigstore-dotnet)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4)](https://dotnet.microsoft.com)
 
-> **Status: alpha (v0.8).** The public API may change before v1.0.
+> **Status: alpha (v0.9).** The public API may change before v1.0.
 
 ## What is Sigstore?
 
@@ -210,6 +210,36 @@ services.AddSigstoreSigning(options =>
 | canonicalizedBody cross-check | Pass (hashedrekord, dsse 0.0.1/0.0.2, intoto 0.0.2) |
 | Multi-signer checkpoints | Pass (C2SP key hints, Ed25519 + ECDSA) |
 
+### Cross-client interop (15 tests)
+
+Verified on every push against **cosign** and **sigstore-python**:
+
+| Test | Direction |
+|------|-----------|
+| message_signature sign + verify | .NET ↔ Python (both directions) |
+| DSSE in-toto attestation | Python → .NET |
+| Digest-only verification | Both directions |
+| cosign sign-blob → verify | cosign → .NET |
+| .NET sign → cosign verify-blob | .NET → cosign |
+| Tampered signature rejection | Both clients × both directions |
+| Wrong issuer/identity rejection | Both clients × both directions |
+
+## Container image signing (OCI)
+
+Like [sigstore-java](https://github.com/sigstore/sigstore-java) and [sigstore-python](https://github.com/sigstore/sigstore-python), this library focuses on **artifact signing and verification**. For container image signing, use [cosign](https://github.com/sigstore/cosign) — the bundles are fully interoperable.
+
+```bash
+# Sign a container image with cosign, extract and verify the bundle with .NET
+cosign sign --yes ghcr.io/my-org/my-image:latest
+cosign save ghcr.io/my-org/my-image:latest --dir /tmp/image-bundle
+# Verify the extracted bundle
+dotnet-sigstore verify-bundle --bundle /tmp/image-bundle/bundle.sigstore.json ...
+
+# Sign an artifact with .NET, attach to a container image with cosign
+dotnet-sigstore sign-bundle --identity-token $TOKEN --bundle artifact.sigstore.json artifact.tar.gz
+cosign attach signature --bundle artifact.sigstore.json ghcr.io/my-org/my-image:latest
+```
+
 ## Architecture
 
 The verification pipeline follows the [Sigstore client specification](https://github.com/sigstore/sigstore/blob/main/docs/client-spec.md):
@@ -237,9 +267,9 @@ See [docs/architecture.md](docs/architecture.md) for a detailed walkthrough.
 | **v0.4** | Conformance signing against real Sigstore infrastructure, Fulcio v2 REST API, canonicalizedBody cross-check, bundle v0.3 leaf-only cert |
 | **v0.5** | Full verification conformance — TSA validation, SCT/SET verification, multi-signer checkpoints, DSSE/intoto cross-checks (128 passed, 0 xfailed) |
 | **v0.6** | Signing conformance — signing-config, TSA timestamps, inclusion proof parsing, hashedrekord v0.0.2 |
-| **v0.7** *(current)* | Full conformance — Rekor v2 API client, DER signatures, zero xfails (**132 passed, 0 xfailed**) |
-| **v0.8** *(current)* | Cross-client interop tests — 12 test cases: message_signature, DSSE, digest, tamper detection, identity policy |
-| **v0.7** | KMS and hardware key support (PKCS#11, Azure Key Vault, AWS KMS) |
+| **v0.7** | Full conformance — Rekor v2 API client, DER signatures, zero xfails (**132 passed, 0 xfailed**) |
+| **v0.8** | Cross-client interop tests — 12 test cases: message_signature, DSSE, digest, tamper detection, identity policy |
+| **v0.9** *(current)* | Cosign interop — 15 tests including cosign sign/verify, documented OCI workflow via cosign |
 | **v1.0** | Stable public API, full Sigstore client spec conformance |
 
 ## Contributing

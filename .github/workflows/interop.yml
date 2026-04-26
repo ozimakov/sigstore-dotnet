@@ -1,0 +1,104 @@
+name: Interop
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 7 * * 1'
+
+jobs:
+  interop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install sigstore-python
+        run: pip install sigstore
+
+      - name: Publish .NET conformance CLI
+        run: dotnet publish src/Sigstore.Conformance/Sigstore.Conformance.csproj -c Release --framework net10.0 -o sigstore-tool
+
+      - name: Create test artifacts
+        run: |
+          echo "interop test artifact for message_signature" > artifact-msg.txt
+          echo "interop test artifact for dsse envelope" > artifact-dsse.txt
+
+      - name: Get OIDC token
+        id: token
+        run: |
+          # Clone the OIDC beacon to get a token
+          git clone --quiet --branch current-token --depth 1 \
+            https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon.git /tmp/beacon
+          TOKEN=$(cat /tmp/beacon/oidc-token.txt)
+          echo "::add-mask::${TOKEN}"
+          echo "value=${TOKEN}" >> "$GITHUB_OUTPUT"
+
+      # ── Sign with .NET, verify with Python ─────────────────────────
+
+      - name: "[.NET → Python] Sign with .NET"
+        run: |
+          ./sigstore-tool/sigstore-dotnet sign-bundle \
+            --identity-token "${{ steps.token.outputs.value }}" \
+            --bundle dotnet-signed.sigstore.json \
+            artifact-msg.txt
+
+      - name: "[.NET → Python] Verify with sigstore-python"
+        run: |
+          sigstore verify identity \
+            --bundle dotnet-signed.sigstore.json \
+            --cert-identity "https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon/.github/workflows/extremely-dangerous-oidc-beacon.yml@refs/heads/main" \
+            --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+            artifact-msg.txt
+
+      # ── Sign with Python, verify with .NET ─────────────────────────
+
+      - name: "[Python → .NET] Sign with sigstore-python"
+        run: |
+          sigstore sign \
+            --identity-token "${{ steps.token.outputs.value }}" \
+            --bundle python-signed.sigstore.json \
+            artifact-msg.txt
+
+      - name: "[Python → .NET] Verify with .NET"
+        run: |
+          ./sigstore-tool/sigstore-dotnet verify-bundle \
+            --bundle python-signed.sigstore.json \
+            --certificate-identity "https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon/.github/workflows/extremely-dangerous-oidc-beacon.yml@refs/heads/main" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            artifact-msg.txt
+
+      # ── Cross-verify digest mode ───────────────────────────────────
+
+      - name: "[.NET → Python] Verify .NET bundle with digest"
+        run: |
+          DIGEST=$(sha256sum artifact-msg.txt | cut -d' ' -f1)
+          sigstore verify identity \
+            --bundle dotnet-signed.sigstore.json \
+            --cert-identity "https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon/.github/workflows/extremely-dangerous-oidc-beacon.yml@refs/heads/main" \
+            --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --offline \
+            artifact-msg.txt
+
+      - name: "[Python → .NET] Verify Python bundle with digest"
+        run: |
+          DIGEST=$(sha256sum artifact-msg.txt | cut -d' ' -f1)
+          ./sigstore-tool/sigstore-dotnet verify-bundle \
+            --bundle python-signed.sigstore.json \
+            --certificate-identity "https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon/.github/workflows/extremely-dangerous-oidc-beacon.yml@refs/heads/main" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "sha256:${DIGEST}"

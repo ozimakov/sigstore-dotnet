@@ -250,13 +250,10 @@ jobs:
           cosign sign-blob --yes \
             --identity-token "${{ steps.token.outputs.value }}" \
             --bundle cosign-signed.sigstore.json \
+            --new-bundle-format \
             artifact-msg.txt
 
-      - name: "[7b] Inspect cosign bundle format"
-        if: always()
-        run: python3 -c "import json; b=json.load(open('cosign-signed.sigstore.json')); print(json.dumps({k:(v if not isinstance(v,str) or len(v)<80 else v[:80]+'...') for k,v in b.items()}, indent=2))" || true
-
-      - name: "[7c] Verify cosign bundle with .NET"
+      - name: "[7b] Verify cosign bundle with .NET"
         run: |
           ./sigstore-tool/sigstore-dotnet verify-bundle \
             --bundle cosign-signed.sigstore.json \
@@ -272,6 +269,7 @@ jobs:
         run: |
           cosign verify-blob \
             --bundle dotnet-msg.sigstore.json \
+            --new-bundle-format \
             --certificate-identity "$CERT_IDENTITY" \
             --certificate-oidc-issuer "$CERT_OIDC_ISSUER" \
             artifact-msg.txt

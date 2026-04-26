@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-04-26
+
+### Added
+
+- **Cross-client interop tests** — new CI workflow (`interop.yml`) that signs with .NET and verifies with sigstore-python, and vice versa; covers `message_signature` and digest-only modes
+- Interop badge in README
+
 ## [0.7.0] — 2026-04-26
 
 ### Added
@@ -130,7 +137,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-target support for .NET 8, 9, and 10
 - `Sigstore.Net.Conformance` — CLI tool implementing the [sigstore-conformance](https://github.com/sigstore/sigstore-conformance) test protocol, published as a .NET global tool
 
-[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.4.0...v0.5.0

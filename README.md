@@ -9,7 +9,7 @@ Managed .NET client library for [Sigstore](https://www.sigstore.dev/) bundle sig
 [![License](https://img.shields.io/github/license/ozimakov/sigstore-dotnet)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4)](https://dotnet.microsoft.com)
 
-> **Status: alpha (v0.7).** The public API may change before v1.0.
+> **Status: alpha (v0.8).** The public API may change before v1.0.
 
 ## What is Sigstore?
 
@@ -238,7 +238,7 @@ See [docs/architecture.md](docs/architecture.md) for a detailed walkthrough.
 | **v0.5** | Full verification conformance — TSA validation, SCT/SET verification, multi-signer checkpoints, DSSE/intoto cross-checks (128 passed, 0 xfailed) |
 | **v0.6** | Signing conformance — signing-config, TSA timestamps, inclusion proof parsing, hashedrekord v0.0.2 |
 | **v0.7** *(current)* | Full conformance — Rekor v2 API client, DER signatures, zero xfails (**132 passed, 0 xfailed**) |
-| **v0.8** | Cross-client interop tests (sign .NET ↔ verify Python and vice versa) |
+| **v0.8** *(current)* | Cross-client interop tests — sign .NET → verify Python, sign Python → verify .NET |
 | **v0.7** | KMS and hardware key support (PKCS#11, Azure Key Vault, AWS KMS) |
 | **v1.0** | Stable public API, full Sigstore client spec conformance |
 

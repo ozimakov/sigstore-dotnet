@@ -40,9 +40,9 @@ jobs:
       - name: Create test artifacts
         run: |
           echo "interop test artifact for message_signature" > artifact-msg.txt
-          # Simple custom predicate (not SLSA — avoids strict schema validation)
+          # SLSA v0.2 provenance predicate
           cat > predicate.json << 'PRED'
-          {"buildType": "https://example.com/interop-test", "builder": {"id": "https://example.com"}}
+          {"builder":{"id":"https://example.com/interop-test"},"buildType":"https://example.com/interop","invocation":{},"buildConfig":{},"metadata":{},"materials":[]}
           PRED
 
       - name: Get OIDC token
@@ -101,7 +101,7 @@ jobs:
           sigstore attest \
             --identity-token "${{ steps.token.outputs.value }}" \
             --predicate predicate.json \
-            --predicate-type "https://example.com/interop-test/v1" \
+            --predicate-type "https://slsa.dev/provenance/v0.2" \
             --bundle python-dsse.sigstore.json \
             artifact-msg.txt
 

@@ -34,6 +34,9 @@ jobs:
       - name: Install sigstore-python
         run: pip install sigstore
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
       - name: Publish .NET conformance CLI
         run: dotnet publish src/Sigstore.Conformance/Sigstore.Conformance.csproj -c Release --framework net10.0 -o sigstore-tool
 
@@ -238,6 +241,50 @@ jobs:
             echo "PASS: .NET correctly rejected wrong identity"
           fi
 
+      # ═══════════════════════════════════════════════════════════════
+      # 7. cosign sign → .NET verify (the primary OCI workflow)
+      # ═══════════════════════════════════════════════════════════════
+
+      - name: "[7a] Sign with cosign (keyless, bundle mode)"
+        run: |
+          cosign sign-blob \
+            --identity-token "${{ steps.token.outputs.value }}" \
+            --bundle cosign-signed.sigstore.json \
+            artifact-msg.txt
+
+      - name: "[7b] Verify cosign bundle with .NET"
+        run: |
+          ./sigstore-tool/sigstore-dotnet verify-bundle \
+            --bundle cosign-signed.sigstore.json \
+            --certificate-identity "$CERT_IDENTITY" \
+            --certificate-oidc-issuer "$CERT_OIDC_ISSUER" \
+            artifact-msg.txt
+
+      # ═══════════════════════════════════════════════════════════════
+      # 8. .NET sign → cosign verify (reverse direction)
+      # ═══════════════════════════════════════════════════════════════
+
+      - name: "[8a] Verify .NET bundle with cosign"
+        run: |
+          cosign verify-blob \
+            --bundle dotnet-msg.sigstore.json \
+            --certificate-identity "$CERT_IDENTITY" \
+            --certificate-oidc-issuer "$CERT_OIDC_ISSUER" \
+            artifact-msg.txt
+
+      # ═══════════════════════════════════════════════════════════════
+      # 9. cosign sign → .NET verify (digest mode)
+      # ═══════════════════════════════════════════════════════════════
+
+      - name: "[9a] Verify cosign bundle with .NET (digest)"
+        run: |
+          DIGEST=$(sha256sum artifact-msg.txt | cut -d' ' -f1)
+          ./sigstore-tool/sigstore-dotnet verify-bundle \
+            --bundle cosign-signed.sigstore.json \
+            --certificate-identity "$CERT_IDENTITY" \
+            --certificate-oidc-issuer "$CERT_OIDC_ISSUER" \
+            "sha256:${DIGEST}"
+
       - name: Summary
         if: always()
-        run: echo "Interop tests completed — 12 test cases across message_signature, DSSE, digest, tamper, and identity checks"
+        run: echo "Interop tests completed — 15 test cases across sigstore-python, cosign, message_signature, DSSE, digest, tamper, and identity checks"

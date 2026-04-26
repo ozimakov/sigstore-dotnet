@@ -148,21 +148,31 @@ public sealed class RekorClient : IRekorClient
             }
 
             string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                return ParseTransparencyLogEntry(json, kind, apiVersion);
-            }
-            catch (RekorException)
-            {
-                // Include truncated response in error for debugging
-                string truncJson = json.Length > 800 ? json[..800] : json;
-                throw new RekorException($"Failed to parse Rekor response (first 800 chars): {truncJson}");
-            }
+            return ParseTransparencyLogEntry(json, kind, apiVersion);
         }
     }
 
     private static TransparencyLogEntry ParseTransparencyLogEntry(string json, string kind, string apiVersion)
     {
+        // Try protobuf JSON parser first (handles v2 responses directly)
+        try
+        {
+            var protoParser = new Google.Protobuf.JsonParser(
+                Google.Protobuf.JsonParser.Settings.Default.WithIgnoreUnknownFields(true));
+
+            // v2 returns a direct TransparencyLogEntry protobuf JSON
+            using JsonDocument probe = JsonDocument.Parse(json);
+            JsonElement root = probe.RootElement;
+            if (root.TryGetProperty("logId", out _) || root.TryGetProperty("kindVersion", out _))
+            {
+                return protoParser.Parse<TransparencyLogEntry>(json);
+            }
+        }
+        catch (Exception)
+        {
+            // Fall through to manual parsing
+        }
+
         try
         {
             return ParseTransparencyLogEntryCore(json, kind, apiVersion);

@@ -247,7 +247,7 @@ jobs:
 
       - name: "[7a] Sign with cosign (keyless, bundle mode)"
         run: |
-          cosign sign-blob \
+          cosign sign-blob --yes \
             --identity-token "${{ steps.token.outputs.value }}" \
             --bundle cosign-signed.sigstore.json \
             artifact-msg.txt

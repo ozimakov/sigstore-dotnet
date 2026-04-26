@@ -40,10 +40,10 @@ jobs:
       - name: Create test artifacts
         run: |
           echo "interop test artifact for message_signature" > artifact-msg.txt
-          echo '{"_type":"https://in-toto.io/Statement/v1","subject":[{"name":"artifact-msg.txt","digest":{"sha256":"placeholder"}}],"predicateType":"https://slsa.dev/provenance/v1","predicate":{}}' > predicate.json
-          # Fix the digest in the predicate
-          DIGEST=$(sha256sum artifact-msg.txt | cut -d' ' -f1)
-          sed -i "s/placeholder/${DIGEST}/" predicate.json
+          # Simple custom predicate (not SLSA — avoids strict schema validation)
+          cat > predicate.json << 'PRED'
+          {"buildType": "https://example.com/interop-test", "builder": {"id": "https://example.com"}}
+          PRED
 
       - name: Get OIDC token
         id: token
@@ -101,7 +101,7 @@ jobs:
           sigstore attest \
             --identity-token "${{ steps.token.outputs.value }}" \
             --predicate predicate.json \
-            --predicate-type "https://slsa.dev/provenance/v1" \
+            --predicate-type "https://example.com/interop-test/v1" \
             --bundle python-dsse.sigstore.json \
             artifact-msg.txt
 

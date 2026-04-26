@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-04-26
+
+### Added
+
+- **Rekor v2 API client** — POST to `/api/v2/log/entries` with `hashedRekordRequestV002` JSON schema; DER-encoded certificate and base64 digest in the request body
+- **Protobuf JSON response parsing** — use `Google.Protobuf.JsonParser` for Rekor v2 responses, correctly handling `canonicalizedBody` bytes, string-typed int64 fields, and nested protobuf objects
+- **Dual-format response parser** — automatically detect and parse both v1 (hex hashes, UUID-wrapped JSON) and v2 (base64 hashes, direct protobuf JSON) Rekor response formats
+
+### Changed
+
+- Conformance: **131 passed, 1 xfailed** (`test_sign_verify_rekor2` — cross-client bundle interop under investigation)
+
 ## [0.6.0] — 2026-04-25
 
 ### Added
@@ -114,7 +126,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-target support for .NET 8, 9, and 10
 - `Sigstore.Net.Conformance` — CLI tool implementing the [sigstore-conformance](https://github.com/sigstore/sigstore-conformance) test protocol, published as a .NET global tool
 
-[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.3.0...v0.4.0

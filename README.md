@@ -33,7 +33,7 @@ Managed .NET client library for [Sigstore](https://www.sigstore.dev/) bundle sig
 | **Rekor2** bundles (TSA timestamps, Ed25519 checkpoints) | Supported |
 | **SCT validation** and **SET verification** | Supported |
 | **Signing config** — custom Fulcio/Rekor/TSA endpoints | Supported |
-| Conformance test suite (3x matrix: net8/9/10) | 131 passed, 1 xfailed |
+| Conformance test suite (3x matrix: net8/9/10) | **132 passed, 0 xfailed** |
 | OCI image verification | Planned |
 | KMS integrations | Planned |
 
@@ -236,7 +236,7 @@ See [docs/architecture.md](docs/architecture.md) for a detailed walkthrough.
 | **v0.4** | Conformance signing against real Sigstore infrastructure, Fulcio v2 REST API, canonicalizedBody cross-check, bundle v0.3 leaf-only cert |
 | **v0.5** | Full verification conformance — TSA validation, SCT/SET verification, multi-signer checkpoints, DSSE/intoto cross-checks (128 passed, 0 xfailed) |
 | **v0.6** | Signing conformance — signing-config, TSA timestamps, inclusion proof parsing, hashedrekord v0.0.2 |
-| **v0.7** *(current)* | Rekor v2 API client (`/api/v2/log/entries`), protobuf JSON response parsing (131 passed, 1 xfailed) |
+| **v0.7** *(current)* | Full conformance — Rekor v2 API client, DER signatures, zero xfails (**132 passed, 0 xfailed**) |
 | **v0.7** | KMS and hardware key support (PKCS#11, Azure Key Vault, AWS KMS) |
 | **v1.0** | Stable public API, full Sigstore client spec conformance |
 

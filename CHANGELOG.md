@@ -15,9 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Protobuf JSON response parsing** — use `Google.Protobuf.JsonParser` for Rekor v2 responses, correctly handling `canonicalizedBody` bytes, string-typed int64 fields, and nested protobuf objects
 - **Dual-format response parser** — automatically detect and parse both v1 (hex hashes, UUID-wrapped JSON) and v2 (base64 hashes, direct protobuf JSON) Rekor response formats
 
+### Fixed
+
+- **DER-encoded ECDSA signatures** — explicitly use `DSASignatureFormat.Rfc3279DerSequence` per the Sigstore spec; .NET defaults to IEEE P1363 on some platforms, which caused cross-client verification failures
+
 ### Changed
 
-- Conformance: **131 passed, 1 xfailed** (`test_sign_verify_rekor2` — cross-client bundle interop under investigation)
+- Conformance: **132 passed, 0 xfailed** — full conformance with zero xfails across all tests
 
 ## [0.6.0] — 2026-04-25
 

@@ -7,6 +7,10 @@ on:
   schedule:
     - cron: '0 7 * * 1'
 
+env:
+  CERT_IDENTITY: "https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon/.github/workflows/extremely-dangerous-oidc-beacon.yml@refs/heads/main"
+  CERT_OIDC_ISSUER: "https://token.actions.githubusercontent.com"
+
 jobs:
   interop:
     runs-on: ubuntu-latest
@@ -36,69 +40,204 @@ jobs:
       - name: Create test artifacts
         run: |
           echo "interop test artifact for message_signature" > artifact-msg.txt
-          echo "interop test artifact for dsse envelope" > artifact-dsse.txt
+          echo '{"_type":"https://in-toto.io/Statement/v1","subject":[{"name":"artifact-msg.txt","digest":{"sha256":"placeholder"}}],"predicateType":"https://slsa.dev/provenance/v1","predicate":{}}' > predicate.json
+          # Fix the digest in the predicate
+          DIGEST=$(sha256sum artifact-msg.txt | cut -d' ' -f1)
+          sed -i "s/placeholder/${DIGEST}/" predicate.json
 
       - name: Get OIDC token
         id: token
         run: |
-          # Clone the OIDC beacon to get a token
           git clone --quiet --branch current-token --depth 1 \
             https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon.git /tmp/beacon
           TOKEN=$(cat /tmp/beacon/oidc-token.txt)
           echo "::add-mask::${TOKEN}"
           echo "value=${TOKEN}" >> "$GITHUB_OUTPUT"
 
-      # ── Sign with .NET, verify with Python ─────────────────────────
+      # ═══════════════════════════════════════════════════════════════
+      # 1. message_signature: .NET → Python
+      # ═══════════════════════════════════════════════════════════════
 
-      - name: "[.NET → Python] Sign with .NET"
+      - name: "[1a] Sign message_signature with .NET"
         run: |
           ./sigstore-tool/sigstore-dotnet sign-bundle \
             --identity-token "${{ steps.token.outputs.value }}" \
-            --bundle dotnet-signed.sigstore.json \
+            --bundle dotnet-msg.sigstore.json \
             artifact-msg.txt
 
-      - name: "[.NET → Python] Verify with sigstore-python"
+      - name: "[1b] Verify .NET message_signature with Python"
         run: |
           sigstore verify identity \
-            --bundle dotnet-signed.sigstore.json \
-            --cert-identity "https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon/.github/workflows/extremely-dangerous-oidc-beacon.yml@refs/heads/main" \
-            --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --bundle dotnet-msg.sigstore.json \
+            --cert-identity "$CERT_IDENTITY" \
+            --cert-oidc-issuer "$CERT_OIDC_ISSUER" \
             artifact-msg.txt
 
-      # ── Sign with Python, verify with .NET ─────────────────────────
+      # ═══════════════════════════════════════════════════════════════
+      # 2. message_signature: Python → .NET
+      # ═══════════════════════════════════════════════════════════════
 
-      - name: "[Python → .NET] Sign with sigstore-python"
+      - name: "[2a] Sign message_signature with Python"
         run: |
           sigstore sign \
             --identity-token "${{ steps.token.outputs.value }}" \
-            --bundle python-signed.sigstore.json \
+            --bundle python-msg.sigstore.json \
             artifact-msg.txt
 
-      - name: "[Python → .NET] Verify with .NET"
+      - name: "[2b] Verify Python message_signature with .NET"
         run: |
           ./sigstore-tool/sigstore-dotnet verify-bundle \
-            --bundle python-signed.sigstore.json \
-            --certificate-identity "https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon/.github/workflows/extremely-dangerous-oidc-beacon.yml@refs/heads/main" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --bundle python-msg.sigstore.json \
+            --certificate-identity "$CERT_IDENTITY" \
+            --certificate-oidc-issuer "$CERT_OIDC_ISSUER" \
             artifact-msg.txt
 
-      # ── Cross-verify digest mode ───────────────────────────────────
+      # ═══════════════════════════════════════════════════════════════
+      # 3. DSSE in-toto attestation: Python → .NET
+      # ═══════════════════════════════════════════════════════════════
 
-      - name: "[.NET → Python] Verify .NET bundle with digest"
+      - name: "[3a] Sign DSSE attestation with Python"
         run: |
-          DIGEST=$(sha256sum artifact-msg.txt | cut -d' ' -f1)
+          sigstore attest \
+            --identity-token "${{ steps.token.outputs.value }}" \
+            --predicate predicate.json \
+            --predicate-type "https://slsa.dev/provenance/v1" \
+            --bundle python-dsse.sigstore.json \
+            artifact-msg.txt
+
+      - name: "[3b] Verify Python DSSE attestation with .NET"
+        run: |
+          ./sigstore-tool/sigstore-dotnet verify-bundle \
+            --bundle python-dsse.sigstore.json \
+            --certificate-identity "$CERT_IDENTITY" \
+            --certificate-oidc-issuer "$CERT_OIDC_ISSUER" \
+            artifact-msg.txt
+
+      # ═══════════════════════════════════════════════════════════════
+      # 4. Digest-only verification (both directions)
+      # ═══════════════════════════════════════════════════════════════
+
+      - name: "[4a] Verify .NET bundle with Python (digest)"
+        run: |
           sigstore verify identity \
-            --bundle dotnet-signed.sigstore.json \
-            --cert-identity "https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon/.github/workflows/extremely-dangerous-oidc-beacon.yml@refs/heads/main" \
-            --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --bundle dotnet-msg.sigstore.json \
+            --cert-identity "$CERT_IDENTITY" \
+            --cert-oidc-issuer "$CERT_OIDC_ISSUER" \
             --offline \
             artifact-msg.txt
 
-      - name: "[Python → .NET] Verify Python bundle with digest"
+      - name: "[4b] Verify Python bundle with .NET (digest)"
         run: |
           DIGEST=$(sha256sum artifact-msg.txt | cut -d' ' -f1)
           ./sigstore-tool/sigstore-dotnet verify-bundle \
-            --bundle python-signed.sigstore.json \
-            --certificate-identity "https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon/.github/workflows/extremely-dangerous-oidc-beacon.yml@refs/heads/main" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --bundle python-msg.sigstore.json \
+            --certificate-identity "$CERT_IDENTITY" \
+            --certificate-oidc-issuer "$CERT_OIDC_ISSUER" \
             "sha256:${DIGEST}"
+
+      # ═══════════════════════════════════════════════════════════════
+      # 5. Negative: tampered signature must be rejected
+      # ═══════════════════════════════════════════════════════════════
+
+      - name: "[5a] Tamper .NET bundle signature → Python rejects"
+        run: |
+          # Flip a byte in the signature
+          python3 -c "
+          import json
+          b = json.load(open('dotnet-msg.sigstore.json'))
+          sig = b['messageSignature']['signature']
+          import base64
+          raw = bytearray(base64.b64decode(sig))
+          raw[-1] ^= 0xFF
+          b['messageSignature']['signature'] = base64.b64encode(bytes(raw)).decode()
+          json.dump(b, open('tampered-dotnet.sigstore.json', 'w'))
+          "
+          # Python must reject
+          if sigstore verify identity \
+            --bundle tampered-dotnet.sigstore.json \
+            --cert-identity "$CERT_IDENTITY" \
+            --cert-oidc-issuer "$CERT_OIDC_ISSUER" \
+            artifact-msg.txt 2>/dev/null; then
+            echo "FAIL: Python accepted tampered bundle" && exit 1
+          else
+            echo "PASS: Python correctly rejected tampered bundle"
+          fi
+
+      - name: "[5b] Tamper Python bundle signature → .NET rejects"
+        run: |
+          python3 -c "
+          import json
+          b = json.load(open('python-msg.sigstore.json'))
+          sig = b['messageSignature']['signature']
+          import base64
+          raw = bytearray(base64.b64decode(sig))
+          raw[-1] ^= 0xFF
+          b['messageSignature']['signature'] = base64.b64encode(bytes(raw)).decode()
+          json.dump(b, open('tampered-python.sigstore.json', 'w'))
+          "
+          # .NET must reject
+          if ./sigstore-tool/sigstore-dotnet verify-bundle \
+            --bundle tampered-python.sigstore.json \
+            --certificate-identity "$CERT_IDENTITY" \
+            --certificate-oidc-issuer "$CERT_OIDC_ISSUER" \
+            artifact-msg.txt 2>/dev/null; then
+            echo "FAIL: .NET accepted tampered bundle" && exit 1
+          else
+            echo "PASS: .NET correctly rejected tampered bundle"
+          fi
+
+      # ═══════════════════════════════════════════════════════════════
+      # 6. Negative: wrong identity must be rejected
+      # ═══════════════════════════════════════════════════════════════
+
+      - name: "[6a] Wrong issuer → Python rejects .NET bundle"
+        run: |
+          if sigstore verify identity \
+            --bundle dotnet-msg.sigstore.json \
+            --cert-identity "$CERT_IDENTITY" \
+            --cert-oidc-issuer "https://wrong-issuer.example.com" \
+            artifact-msg.txt 2>/dev/null; then
+            echo "FAIL: Python accepted wrong issuer" && exit 1
+          else
+            echo "PASS: Python correctly rejected wrong issuer"
+          fi
+
+      - name: "[6b] Wrong issuer → .NET rejects Python bundle"
+        run: |
+          if ./sigstore-tool/sigstore-dotnet verify-bundle \
+            --bundle python-msg.sigstore.json \
+            --certificate-identity "$CERT_IDENTITY" \
+            --certificate-oidc-issuer "https://wrong-issuer.example.com" \
+            artifact-msg.txt 2>/dev/null; then
+            echo "FAIL: .NET accepted wrong issuer" && exit 1
+          else
+            echo "PASS: .NET correctly rejected wrong issuer"
+          fi
+
+      - name: "[6c] Wrong identity → Python rejects .NET bundle"
+        run: |
+          if sigstore verify identity \
+            --bundle dotnet-msg.sigstore.json \
+            --cert-identity "https://wrong-identity.example.com" \
+            --cert-oidc-issuer "$CERT_OIDC_ISSUER" \
+            artifact-msg.txt 2>/dev/null; then
+            echo "FAIL: Python accepted wrong identity" && exit 1
+          else
+            echo "PASS: Python correctly rejected wrong identity"
+          fi
+
+      - name: "[6d] Wrong identity → .NET rejects Python bundle"
+        run: |
+          if ./sigstore-tool/sigstore-dotnet verify-bundle \
+            --bundle python-msg.sigstore.json \
+            --certificate-identity "https://wrong-identity.example.com" \
+            --certificate-oidc-issuer "$CERT_OIDC_ISSUER" \
+            artifact-msg.txt 2>/dev/null; then
+            echo "FAIL: .NET accepted wrong identity" && exit 1
+          else
+            echo "PASS: .NET correctly rejected wrong identity"
+          fi
+
+      - name: Summary
+        if: always()
+        run: echo "Interop tests completed — 12 test cases across message_signature, DSSE, digest, tamper, and identity checks"

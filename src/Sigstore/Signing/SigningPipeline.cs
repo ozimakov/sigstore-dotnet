@@ -209,14 +209,14 @@ public sealed class SigningPipeline
     {
         if (payloadType is null)
         {
-            // message_signature: sign SHA-256 digest
-            return key.SignData(artifact, HashAlgorithmName.SHA256);
+            // message_signature: sign SHA-256 digest, DER-encoded per Sigstore spec
+            return key.SignData(artifact, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
         }
         else
         {
-            // DSSE: sign PAE(payloadType, payload)
+            // DSSE: sign PAE(payloadType, payload), DER-encoded
             byte[] pae = Dsse.PreAuthenticationEncoding(payloadType, artifact);
-            return key.SignData(pae, HashAlgorithmName.SHA256);
+            return key.SignData(pae, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
         }
     }
 

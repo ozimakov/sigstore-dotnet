@@ -1,0 +1,6 @@
+- name: Getting Started
+  href: getting-started.md
+- name: Cosign Integration
+  href: cosign-integration.md
+- name: Architecture
+  href: architecture.md

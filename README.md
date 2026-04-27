@@ -36,8 +36,7 @@ Managed .NET client library for [Sigstore](https://www.sigstore.dev/) bundle sig
 | **SCT validation** and **SET verification** | Supported |
 | **Signing config** — custom Fulcio/Rekor/TSA endpoints | Supported |
 | Conformance test suite (3x matrix: net8/9/10) | **132 passed, 0 xfailed** |
-| OCI image verification | Planned |
-| KMS integrations | Planned |
+| **OCI container signing** via [cosign](https://github.com/sigstore/cosign) | Interoperable (see [Cosign Integration](#container-image-signing-oci)) |
 
 ## Installation
 

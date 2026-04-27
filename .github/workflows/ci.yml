@@ -29,7 +29,7 @@ jobs:
         run: dotnet build sigstore-dotnet.sln --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test sigstore-dotnet.sln --configuration Release --no-build --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile="**/Protos/**/*.cs" DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByAttribute="GeneratedCodeAttribute,CompilerGeneratedAttribute"
+        run: dotnet test sigstore-dotnet.sln --configuration Release --no-build --collect:"XPlat Code Coverage" --settings tests/coverage.runsettings
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

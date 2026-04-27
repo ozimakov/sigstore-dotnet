@@ -8,7 +8,7 @@ on:
     - cron: '0 7 * * 1'
 
 env:
-  CERT_IDENTITY: "https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon/.github/workflows/extremely-dangerous-oidc-beacon.yml@refs/heads/main"
+  CERT_IDENTITY: "https://github.com/ozimakov/sigstore-dotnet/.github/workflows/interop.yml@refs/heads/main"
   CERT_OIDC_ISSUER: "https://token.actions.githubusercontent.com"
 
 jobs:
@@ -50,26 +50,12 @@ jobs:
 
       - name: Get OIDC token
         id: token
-        run: |
-          for attempt in 1 2 3 4 5 6; do
-            rm -rf /tmp/beacon
-            git clone --quiet --branch current-token --depth 1 \
-              https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon.git /tmp/beacon
-            TOKEN=$(cat /tmp/beacon/oidc-token.txt)
-            # Check token has at least 30s of validity
-            EXP=$(echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['exp'])")
-            NOW=$(date +%s)
-            REMAINING=$((EXP - NOW))
-            if [ "$REMAINING" -gt 30 ]; then
-              echo "Token valid for ${REMAINING}s"
-              echo "::add-mask::${TOKEN}"
-              echo "value=${TOKEN}" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            echo "Token expires in ${REMAINING}s, retrying in 30s... (attempt $attempt)"
-            sleep 30
-          done
-          echo "Failed to get a valid token after 6 attempts" && exit 1
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('sigstore');
+            core.setSecret(token);
+            core.setOutput('value', token);
 
       # ═══════════════════════════════════════════════════════════════
       # 1. message_signature: .NET → Python

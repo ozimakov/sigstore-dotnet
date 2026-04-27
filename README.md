@@ -10,7 +10,7 @@ Managed .NET client library for [Sigstore](https://www.sigstore.dev/) bundle sig
 [![License](https://img.shields.io/github/license/ozimakov/sigstore-dotnet)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4)](https://dotnet.microsoft.com)
 
-> **Status: alpha (v0.9).** The public API may change before v1.0.
+> **Status: v1.0 — stable.** Full Sigstore client spec conformance. API is stable.
 
 ## What is Sigstore?
 
@@ -60,8 +60,8 @@ public class MyService(Verifier verifier)
     public async Task VerifyAsync(string bundleJson, byte[] artifact)
     {
         VerificationPolicy policy = VerificationPolicy.ForGitHubActions(
-            issuer: "https://token.actions.githubusercontent.com",
-            repository: "my-org/my-repo");
+            repository: "my-org/my-repo",
+            gitRef: "refs/heads/main");
 
         VerificationResult result = await verifier.VerifyAsync(
             bundleJson, artifact, policy, CancellationToken.None);
@@ -157,7 +157,7 @@ public class MyService(Signer signer)
 |--------|---------|-----------------|
 | `VerificationPolicy.ForExact(issuer, subject)` | Exact OIDC issuer **and** subject string | Service account email, specific workflow ref |
 | `VerificationPolicy.ForRegexSubject(issuer, pattern)` | Exact issuer, regex on subject | Wildcard across branches or repos |
-| `VerificationPolicy.ForGitHubActions(issuer, repository)` | GitHub Actions token for a specific repo | CI/CD artifact provenance |
+| `VerificationPolicy.ForGitHubActions(repository, gitRef)` | GitHub Actions token for a specific repo + ref | CI/CD artifact provenance |
 
 ## Trusted root
 
@@ -270,8 +270,8 @@ See [docs/architecture.md](docs/architecture.md) for a detailed walkthrough.
 | **v0.6** | Signing conformance — signing-config, TSA timestamps, inclusion proof parsing, hashedrekord v0.0.2 |
 | **v0.7** | Full conformance — Rekor v2 API client, DER signatures, zero xfails (**132 passed, 0 xfailed**) |
 | **v0.8** | Cross-client interop tests — 12 test cases: message_signature, DSSE, digest, tamper detection, identity policy |
-| **v0.9** *(current)* | Cosign interop — 15 tests including cosign sign/verify, documented OCI workflow via cosign |
-| **v1.0** | Stable public API, full Sigstore client spec conformance |
+| **v0.9** | Cosign interop — 15 tests including cosign sign/verify, documented OCI workflow via cosign |
+| **v1.0** *(current)* | Stable API, batch signing, staging preset, Codecov, DocFX site, full spec conformance |
 
 ## Contributing
 

@@ -108,6 +108,11 @@ public sealed class SigningPipeline
         return results;
     }
 
+    /// <summary>
+    /// Runs the signing pipeline with optional TSA timestamp support.
+    /// When <paramref name="tsaUrl"/> is non-null, an RFC 3161 timestamp
+    /// is requested and included in the bundle.
+    /// </summary>
     public async Task<SigningResult> RunAsync(
         byte[] artifact,
         string? payloadType,

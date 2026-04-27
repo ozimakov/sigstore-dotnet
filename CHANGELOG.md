@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-04-27
+
+### Added
+
+- **Batch signing** — `SignBatchAsync` signs multiple artifacts with a single OIDC token and Fulcio certificate, amortizing auth overhead
+- **Staging environment preset** — `SigstoreSigningOptions.Staging()` pre-configured for sigstage.dev
+- **Codecov integration** — code coverage badge, protobuf-generated code excluded from metrics
+- **GitHub Pages documentation site** — DocFX-generated API reference and articles, auto-deployed on every push
+- **Cosign interop tests** — 15 cross-client tests (cosign + sigstore-python + .NET)
+- 6 new unit tests: DSSE PAE encoding, VerificationPolicy factories
+
+### Fixed
+
+- README `ForGitHubActions` example now matches actual API signature (`repository`, `gitRef`)
+- Removed unnecessary `Task.Yield()` from verification pipeline
+- Fixed redundant `logIndex` parsing in Rekor v2 response handler
+- Added XML doc to `SigningPipeline.RunAsync` TSA overload
+- Updated NuGet package description for accuracy
+
+### Changed
+
+- Package version: **1.0.0** — stable public API
+- 67 unit tests, 132 conformance tests, 15 interop tests across .NET 8, 9, and 10
+
 ## [0.9.0] — 2026-04-26
 
 ### Added
@@ -150,7 +174,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-target support for .NET 8, 9, and 10
 - `Sigstore.Net.Conformance` — CLI tool implementing the [sigstore-conformance](https://github.com/sigstore/sigstore-conformance) test protocol, published as a .NET global tool
 
-[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/ozimakov/sigstore-dotnet/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.9.0...v1.0.0
 [0.9.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ozimakov/sigstore-dotnet/compare/v0.7.0...v0.8.0

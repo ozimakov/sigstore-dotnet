@@ -344,13 +344,10 @@ public sealed class RekorClient : IRekorClient
             InclusionProof proof = new InclusionProof();
             if (proofEl.TryGetProperty("logIndex", out JsonElement pLogIdx))
             {
-                if (pLogIdx.ValueKind == JsonValueKind.String)
-                    long.TryParse(pLogIdx.GetString(), out long pli);
-                else
-                    proof.LogIndex = pLogIdx.GetInt64();
-
                 if (pLogIdx.ValueKind == JsonValueKind.String && long.TryParse(pLogIdx.GetString(), out long pliVal))
                     proof.LogIndex = pliVal;
+                else if (pLogIdx.ValueKind == JsonValueKind.Number)
+                    proof.LogIndex = pLogIdx.GetInt64();
             }
 
             if (proofEl.TryGetProperty("treeSize", out JsonElement pTreeSize))

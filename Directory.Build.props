@@ -14,6 +14,6 @@
     <RepositoryUrl>https://github.com/ozimakov/sigstore-dotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>sigstore;supply-chain;security;signing;verification</PackageTags>
-    <Version>0.1.0</Version>
+    <Version>1.0.0</Version>
   </PropertyGroup>
 </Project>

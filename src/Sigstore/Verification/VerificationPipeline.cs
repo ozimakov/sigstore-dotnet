@@ -67,7 +67,7 @@ public sealed class VerificationPipeline
         CancellationToken cancellationToken)
     {
         List<string> steps = new List<string>();
-        await Task.Yield();
+
 
         SigstoreBundle bundle = _bundleParser.Parse(bundleJson);
         steps.Add("Step 1: Parsed Sigstore bundle JSON.");
@@ -114,7 +114,7 @@ public sealed class VerificationPipeline
         CancellationToken cancellationToken)
     {
         List<string> steps = new List<string>();
-        await Task.Yield();
+
 
         SigstoreBundle bundle = _bundleParser.Parse(bundleJson);
         steps.Add("Step 1: Parsed Sigstore bundle JSON.");

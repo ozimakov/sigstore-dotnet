@@ -20,11 +20,3 @@ This list is updated automatically every Monday from the GitHub commit history. 
 </table>
 <!-- readme: contributors -end -->
 
-## Bots
-
-<!-- readme: bots -start -->
-<table>
-	<tbody>
-	<tbody>
-</table>
-<!-- readme: bots -end -->

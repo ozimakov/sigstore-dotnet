@@ -27,3 +27,4 @@ coverage.*
 # Git worktrees
 .worktrees/
 docs/_site/
+docs/api/

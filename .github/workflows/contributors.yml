@@ -1,0 +1,29 @@
+name: Contributors
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'  # Mondays at 08:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update contributors list
+        uses: akhilmhdh/contributors-readme-action@v2.3.10
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          readme_path: docs/contributors.md
+          image_size: 64
+          columns_per_row: 8
+          commit_message: "chore: update contributors list"
+          collaborators: direct
+          use_username: false
+          auto_detect_branch_protection: false

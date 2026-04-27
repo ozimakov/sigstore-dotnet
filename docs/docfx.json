@@ -19,19 +19,26 @@
         "files": ["api/**.yml", "api/index.md"]
       },
       {
-        "files": ["articles/**.md", "*.md", "toc.yml"]
+        "files": ["articles/**.md", "articles/**.yml", "*.md", "toc.yml"]
       }
     ],
     "resource": [
       {
-        "files": ["images/**"]
+        "files": ["images/**", "logo.svg"]
       }
     ],
     "dest": "_site",
     "globalMetadata": {
       "_appTitle": "sigstore-dotnet",
-      "_appFooter": "sigstore-dotnet — Apache 2.0 License",
-      "_enableSearch": true
+      "_appName": "sigstore-dotnet",
+      "_appLogoPath": "logo.svg",
+      "_appFooter": "sigstore-dotnet — <a href=\"https://github.com/ozimakov/sigstore-dotnet/blob/main/LICENSE\">Apache 2.0 License</a> — Built with <a href=\"https://dotnet.github.io/docfx\">DocFX</a>",
+      "_enableSearch": true,
+      "_disableContribution": false,
+      "_gitContribute": {
+        "repo": "https://github.com/ozimakov/sigstore-dotnet",
+        "branch": "main"
+      }
     },
     "template": ["default", "modern"]
   }

@@ -32,4 +32,15 @@ public sealed class SigstoreSigningOptions
     /// HTTP client timeout for Fulcio and Rekor calls. Defaults to 30 seconds.
     /// </summary>
     public TimeSpan HttpTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Creates options pre-configured for the Sigstore staging instance.
+    /// Useful for testing against non-production infrastructure.
+    /// </summary>
+    /// <returns>Options with staging Fulcio/Rekor URLs.</returns>
+    public static SigstoreSigningOptions Staging() => new()
+    {
+        FulcioUrl = new Uri("https://fulcio.sigstage.dev/"),
+        RekorUrl = new Uri("https://rekor.sigstage.dev/"),
+    };
 }

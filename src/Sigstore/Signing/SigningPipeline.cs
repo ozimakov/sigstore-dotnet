@@ -72,6 +72,42 @@ public sealed class SigningPipeline
             tsaUrl: null, httpClient: null, cancellationToken);
     }
 
+    /// <summary>
+    /// Signs multiple artifacts in a single batch, reusing one OIDC token and
+    /// Fulcio certificate. Each artifact gets its own Rekor entry and bundle.
+    /// </summary>
+    public async Task<IReadOnlyList<SigningResult>> RunBatchAsync(
+        byte[][] artifacts,
+        string oidcAudience,
+        TrustedRoot trustedRoot,
+        CancellationToken cancellationToken)
+    {
+        // Steps 2-5: shared across all artifacts (one token, one key, one cert)
+        string token = await _tokenProvider.GetTokenAsync(oidcAudience, cancellationToken).ConfigureAwait(false);
+        (string subject, long _) = ParseJwtClaims(token);
+
+        using ECDsa ephemeralKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        byte[] csrDer = BuildCsr(ephemeralKey);
+        X509Certificate2Collection chain = await _fulcioClient
+            .GetSigningCertificateAsync(csrDer, token, cancellationToken).ConfigureAwait(false);
+        _certificateVerifier.BuildVerifiedChain(chain[0], trustedRoot);
+
+        SigningResult[] results = new SigningResult[artifacts.Length];
+        for (int i = 0; i < artifacts.Length; i++)
+        {
+            byte[] artifact = artifacts[i];
+            byte[] signature = Sign(ephemeralKey, artifact, payloadType: null);
+            TransparencyLogEntry tlogEntry = await UploadToRekorAsync(
+                artifact, null, signature, chain[0], cancellationToken).ConfigureAwait(false);
+            VerifyInclusionPromise(tlogEntry);
+            string bundleJson = AssembleBundle(artifact, null, signature, chain, tlogEntry);
+            SignerIdentity identity = ExtractSignerIdentity(chain[0], subject);
+            results[i] = new SigningResult(bundleJson, identity);
+        }
+
+        return results;
+    }
+
     public async Task<SigningResult> RunAsync(
         byte[] artifact,
         string? payloadType,

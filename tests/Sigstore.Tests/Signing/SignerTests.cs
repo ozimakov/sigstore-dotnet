@@ -68,6 +68,59 @@ public sealed class SignerTests
             signer.SignAsync(null!, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task SignBatchAsync_MultipleArtifacts_ReturnsOneResultEach()
+    {
+        (SigningPipeline pipeline, string trustedRootJson) = BuildPipelineAndRoot();
+        TrustedRoot root = TrustedRootLoader.Parse(trustedRootJson);
+        Signer signer = new Signer(
+            pipeline,
+            new ReturningTufClient(root),
+            "sigstore",
+            NullLogger<Signer>.Instance);
+
+        byte[][] artifacts =
+        {
+            Encoding.UTF8.GetBytes("artifact-one"),
+            Encoding.UTF8.GetBytes("artifact-two"),
+            Encoding.UTF8.GetBytes("artifact-three"),
+        };
+
+        IReadOnlyList<SigningResult> results = await signer.SignBatchAsync(artifacts, CancellationToken.None);
+
+        Assert.Equal(3, results.Count);
+        foreach (SigningResult r in results)
+        {
+            Assert.False(string.IsNullOrEmpty(r.BundleJson));
+            Assert.Contains("messageSignature", r.BundleJson);
+        }
+    }
+
+    [Fact]
+    public async Task SignBatchAsync_EmptyList_ReturnsEmpty()
+    {
+        Signer signer = new Signer(
+            BuildMinimalPipeline(),
+            new FakeTufClient(),
+            "sigstore",
+            NullLogger<Signer>.Instance);
+
+        IReadOnlyList<SigningResult> results = await signer.SignBatchAsync(
+            Array.Empty<byte[]>(), CancellationToken.None);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public void StagingOptions_HasCorrectUrls()
+    {
+        SigstoreSigningOptions options = SigstoreSigningOptions.Staging();
+
+        Assert.Equal("https://fulcio.sigstage.dev/", options.FulcioUrl.ToString());
+        Assert.Equal("https://rekor.sigstage.dev/", options.RekorUrl.ToString());
+        Assert.Equal("sigstore", options.OidcAudience);
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private static (SigningPipeline pipeline, string trustedRootJson) BuildPipelineAndRoot()
@@ -206,6 +259,14 @@ public sealed class SignerTests
     {
         public Task<Dev.Sigstore.Trustroot.V1.TrustedRoot> FetchPublicGoodTrustedRootAsync(CancellationToken ct)
             => throw new InvalidOperationException("TUF not expected in these tests.");
+    }
+
+    private sealed class ReturningTufClient : ITufClient
+    {
+        private readonly TrustedRoot _root;
+        public ReturningTufClient(TrustedRoot root) => _root = root;
+        public Task<TrustedRoot> FetchPublicGoodTrustedRootAsync(CancellationToken ct)
+            => Task.FromResult(_root);
     }
 
     private sealed class UnreachableFulcioClient : IFulcioClient

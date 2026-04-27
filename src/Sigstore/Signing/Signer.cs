@@ -104,6 +104,32 @@ public sealed class Signer
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Signs multiple artifacts in a single batch, reusing one OIDC token and
+    /// Fulcio certificate across all artifacts. Each artifact gets its own Rekor
+    /// entry and bundle. Produces <c>message_signature</c> bundles.
+    /// </summary>
+    /// <param name="artifacts">Artifact byte arrays to sign.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>One <see cref="SigningResult"/> per artifact, in input order.</returns>
+    public async Task<IReadOnlyList<SigningResult>> SignBatchAsync(
+        IEnumerable<byte[]> artifacts,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(artifacts);
+        byte[][] items = artifacts.ToArray();
+        if (items.Length == 0)
+        {
+            return Array.Empty<SigningResult>();
+        }
+
+        TrustedRoot trustedRoot = await ResolveTrustedRootAsync(null, cancellationToken)
+            .ConfigureAwait(false);
+        _logger.LogDebug("Starting batch sign operation. Count={Count}", items.Length);
+        return await _pipeline.RunBatchAsync(items, _oidcAudience, trustedRoot, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private async Task<TrustedRoot> ResolveTrustedRootAsync(string? trustedRootJson, CancellationToken ct)
     {
         if (trustedRootJson is null)

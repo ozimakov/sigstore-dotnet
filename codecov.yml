@@ -16,3 +16,5 @@ coverage:
 ignore:
   - "src/Sigstore/Protos"
   - "**/Protos/**"
+  - "src/Sigstore.Conformance/**"
+  - "tests/**"

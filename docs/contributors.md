@@ -5,9 +5,26 @@ This list is updated automatically every Monday from the GitHub commit history. 
 ## Code contributors
 
 <!-- readme: contributors -start -->
+<table>
+	<tbody>
+		<tr>
+            <td align="center">
+                <a href="https://github.com/ozimakov">
+                    <img src="https://avatars.githubusercontent.com/u/3647621?v=4" width="64;" alt="ozimakov"/>
+                    <br />
+                    <sub><b>Oleg Zimakov</b></sub>
+                </a>
+            </td>
+		</tr>
+	<tbody>
+</table>
 <!-- readme: contributors -end -->
 
 ## Bots
 
 <!-- readme: bots -start -->
+<table>
+	<tbody>
+	<tbody>
+</table>
 <!-- readme: bots -end -->

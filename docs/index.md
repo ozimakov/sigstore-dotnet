@@ -24,6 +24,7 @@ The Sigstore project ships first-class clients for Go, Java, and Python. For .NE
 - [Architecture](articles/architecture.md) — verification and signing pipelines
 - [API Reference](xref:Sigstore.Verification.Verifier) — auto-generated from XML doc comments
 - [Contributors](contributors.md) — everyone who has contributed
+- [Stats](stats.md) — downloads, stars, release cadence, security score
 - [GitHub Repository](https://github.com/ozimakov/sigstore-dotnet)
 - [NuGet Package](https://www.nuget.org/packages/Sigstore.Net)
 

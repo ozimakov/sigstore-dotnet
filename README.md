@@ -6,6 +6,7 @@ Managed .NET client library for [Sigstore](https://www.sigstore.dev/) bundle sig
 [![CI](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/ci.yml/badge.svg)](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/ci.yml)
 [![Conformance](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/conformance.yml/badge.svg)](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/conformance.yml)
 [![Interop](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/interop.yml/badge.svg)](https://github.com/ozimakov/sigstore-dotnet/actions/workflows/interop.yml)
+[![codecov](https://codecov.io/gh/ozimakov/sigstore-dotnet/graph/badge.svg)](https://codecov.io/gh/ozimakov/sigstore-dotnet)
 [![License](https://img.shields.io/github/license/ozimakov/sigstore-dotnet)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4)](https://dotnet.microsoft.com)
 

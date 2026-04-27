@@ -29,11 +29,12 @@ jobs:
         run: dotnet build sigstore-dotnet.sln --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test sigstore-dotnet.sln --configuration Release --no-build --collect:"XPlat Code Coverage"
+        run: dotnet test sigstore-dotnet.sln --configuration Release --no-build --settings tests/coverage.runsettings
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         if: matrix.os == 'ubuntu-latest' && matrix.dotnet == '10.x'
         with:
           files: '**/coverage.cobertura.xml'
+          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false

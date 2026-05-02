@@ -10,8 +10,6 @@ Managed .NET client library for [Sigstore](https://www.sigstore.dev/) bundle sig
 [![License](https://img.shields.io/github/license/ozimakov/sigstore-dotnet)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4)](https://dotnet.microsoft.com)
 
-> **Status: v1.0 — stable.** Full Sigstore client spec conformance. API is stable.
-
 ## What is Sigstore?
 
 [Sigstore](https://www.sigstore.dev/) is an open-source project that makes software supply-chain signing and verification transparent, auditable, and accessible. Artifacts are signed with short-lived X.509 certificates issued by [Fulcio](https://github.com/sigstore/fulcio) — tied to an OIDC identity from GitHub Actions, Google, or Microsoft — and every signing event is recorded in the [Rekor](https://github.com/sigstore/rekor) transparency log, eliminating the need to manage long-lived private keys.

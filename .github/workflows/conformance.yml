@@ -10,7 +10,7 @@ on:
 jobs:
   conformance:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -36,7 +36,20 @@ jobs:
       - name: Publish conformance CLI
         run: dotnet publish src/Sigstore.Conformance/Sigstore.Conformance.csproj -c Release --framework ${{ matrix.framework }} -o "${GITHUB_WORKSPACE}/sigstore-tool"
 
-      - name: Run sigstore-conformance
+      # The conformance suite hits Sigstore production infra (Fulcio/Rekor/TUF).
+      # Transient infra blips show up as setup errors on the first test; retry once.
+      - name: Run sigstore-conformance (attempt 1)
+        id: conformance_try1
+        continue-on-error: true
+        timeout-minutes: 10
+        uses: sigstore/sigstore-conformance@v0.0.25
+        with:
+          entrypoint: ${{ github.workspace }}/sigstore-tool/sigstore-dotnet
+          skip-cpython-release-tests: true
+
+      - name: Run sigstore-conformance (attempt 2)
+        if: steps.conformance_try1.outcome == 'failure'
+        timeout-minutes: 12
         uses: sigstore/sigstore-conformance@v0.0.25
         with:
           entrypoint: ${{ github.workspace }}/sigstore-tool/sigstore-dotnet

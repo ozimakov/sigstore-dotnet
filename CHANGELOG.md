@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-05-01
+
+### Changed
+
+- `PackageProjectUrl` now points at the documentation site (`https://sigstore.zimakov.net`) instead of the GitHub repository. The repository link remains available on nuget.org via `RepositoryUrl`.
+
 ## [1.0.0] — 2026-04-27
 
 ### Added

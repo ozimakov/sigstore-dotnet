@@ -13,7 +13,7 @@
     <PackageProjectUrl>https://sigstore.zimakov.net</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ozimakov/sigstore-dotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>sigstore;supply-chain;security;signing;verification</PackageTags>
-    <Version>1.0.1</Version>
+    <PackageTags>sigstore;supply-chain;security;signing;verification;keyless;fulcio;rekor;cosign;dsse;in-toto;net8;net9;net10</PackageTags>
+    <Version>1.0.2</Version>
   </PropertyGroup>
 </Project>

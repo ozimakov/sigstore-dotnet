@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-05-01
+
+### Added
+
+- 58 new unit tests covering exception types, Merkle inclusion proof edge cases, Fulcio response parsing (PEM and JSON wrappers, error paths), X.509 extension decoding (OctetString-wrapped UTF-8, identity URI helpers), and trusted-root JSON parsing. Overall line coverage rose from ~50% to ~54%.
+
+### Fixed
+
+- `TrustedRootLoader.Parse` now wraps malformed-JSON errors (`InvalidJsonException`) in `TrustedRootException` so callers see the same exception type for both syntactic and semantic parse failures.
+
+### Changed
+
+- Package description now states the multi-target framework support explicitly (.NET 8, 9, and 10).
+- `PackageTags` expanded with `keyless`, `fulcio`, `rekor`, `cosign`, `dsse`, `in-toto`, `net8`, `net9`, `net10` for better discoverability on nuget.org.
+
 ## [1.0.1] — 2026-05-01
 
 ### Changed

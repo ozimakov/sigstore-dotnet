@@ -21,7 +21,7 @@ public static class TrustedRootLoader
             JsonParser parser = new JsonParser(JsonParser.Settings.Default.WithIgnoreUnknownFields(true));
             return parser.Parse<TrustedRoot>(json);
         }
-        catch (InvalidProtocolBufferException ex)
+        catch (Exception ex) when (ex is InvalidProtocolBufferException or InvalidJsonException)
         {
             throw new TrustedRootException("Step 2 (trusted root): trusted root JSON could not be parsed.", ex);
         }

@@ -10,7 +10,7 @@
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <PackageId>Sigstore.Net</PackageId>
-    <Description>Managed .NET client library for signing and verifying Sigstore bundles. Keyless signing via Fulcio and Rekor, managed-key verification, DSSE/in-toto attestations. Pure managed code — no native binaries.</Description>
+    <Description>Managed .NET client library for signing and verifying Sigstore bundles. Targets .NET 8, 9, and 10. Keyless signing via Fulcio and Rekor, managed-key verification, DSSE/in-toto attestations. Pure managed code — no native binaries.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

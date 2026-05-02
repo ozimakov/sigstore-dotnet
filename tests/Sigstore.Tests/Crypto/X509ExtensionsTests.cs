@@ -55,6 +55,62 @@ public sealed class X509ExtensionsTests
         Assert.Contains("https://github.com/test/workflow.yml@refs/heads/main", uris);
     }
 
+    [Fact]
+    public void TryGetFulcioStringExtension_PresentOctetStringWrappedUtf8_DecodesValue()
+    {
+        using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var req = new CertificateRequest("CN=test", key, HashAlgorithmName.SHA256);
+        // Fulcio stores OIDC issuer (.8) as DER OCTET STRING wrapping a UTF8String.
+        byte[] raw = EncodeOctetStringWrappedUtf8("https://accounts.example.com");
+        req.CertificateExtensions.Add(new X509Extension(X509Extensions.OidcIssuerOid, raw, critical: false));
+        X509Certificate2 cert = req.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+
+        bool found = X509Extensions.TryGetFulcioStringExtension(cert, X509Extensions.OidcIssuerOid, out string value);
+
+        Assert.True(found);
+        Assert.Equal("https://accounts.example.com", value);
+    }
+
+    [Fact]
+    public void TryGetPrimaryIdentityUri_NoSan_ReturnsFalse()
+    {
+        using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        X509Certificate2 cert = CreateSelfSigned(key);
+
+        bool found = X509Extensions.TryGetPrimaryIdentityUri(cert, out string identity);
+
+        Assert.False(found);
+        Assert.Equal(string.Empty, identity);
+    }
+
+    [Fact]
+    public void TryGetPrimaryIdentityUri_WithUriSan_ReturnsFirstUri()
+    {
+        using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var req = new CertificateRequest("CN=test", key, HashAlgorithmName.SHA256);
+        var sanBuilder = new SubjectAlternativeNameBuilder();
+        sanBuilder.AddUri(new Uri("https://github.com/owner/repo/.github/workflows/release.yml@refs/heads/main"));
+        sanBuilder.AddUri(new Uri("https://github.com/owner/repo/.github/workflows/secondary.yml@refs/heads/main"));
+        req.CertificateExtensions.Add(sanBuilder.Build());
+        X509Certificate2 cert = req.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+
+        bool found = X509Extensions.TryGetPrimaryIdentityUri(cert, out string identity);
+
+        Assert.True(found);
+        Assert.StartsWith("https://github.com/owner/repo/.github/workflows/", identity);
+    }
+
+    private static byte[] EncodeOctetStringWrappedUtf8(string value)
+    {
+        var writer = new System.Formats.Asn1.AsnWriter(System.Formats.Asn1.AsnEncodingRules.DER);
+        var inner = new System.Formats.Asn1.AsnWriter(System.Formats.Asn1.AsnEncodingRules.DER);
+        inner.WriteCharacterString(System.Formats.Asn1.UniversalTagNumber.UTF8String, value);
+        writer.WriteOctetString(inner.Encode());
+        return writer.Encode();
+    }
+
     private static X509Certificate2 CreateSelfSigned(ECDsa key)
     {
         var req = new CertificateRequest("CN=test", key, HashAlgorithmName.SHA256);

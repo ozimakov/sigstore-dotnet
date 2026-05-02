@@ -24,7 +24,7 @@
     ],
     "resource": [
       {
-        "files": ["images/**", "logo.svg"]
+        "files": ["images/**", "logo.svg", "CNAME"]
       }
     ],
     "dest": "_site",

@@ -1,3 +1,8 @@
+---
+title: Introduction to Sigstore — keyless signing for .NET
+description: What Sigstore is, why it exists, and why a pure managed .NET implementation matters. Covers Fulcio, Rekor, TUF, and the supply-chain problem keyless signing solves.
+---
+
 # Introduction to Sigstore
 
 ## The supply chain problem

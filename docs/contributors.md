@@ -1,3 +1,8 @@
+---
+title: Contributors
+description: Everyone who has contributed to sigstore-dotnet. Updated automatically each week from the GitHub commit history.
+---
+
 This list is updated automatically every Monday from the GitHub commit history. To contribute, see [CONTRIBUTING.md](https://github.com/ozimakov/sigstore-dotnet/blob/main/CONTRIBUTING.md).
 
 <!-- readme: contributors -start -->

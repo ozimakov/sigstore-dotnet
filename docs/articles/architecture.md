@@ -1,3 +1,8 @@
+---
+title: Architecture — verification and signing pipelines
+description: How sigstore-dotnet is organized internally — the verification pipeline, signing pipeline, trust-root model, and Rekor v1/v2 entry handling.
+---
+
 # Architecture
 
 ## Verification pipeline (v0.1)

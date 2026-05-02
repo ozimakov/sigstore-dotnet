@@ -1,3 +1,8 @@
+---
+title: Cosign Integration — sign with cosign, verify with .NET
+description: Use cosign to sign container images and artifacts, then verify those bundles with sigstore-dotnet. Bundles are fully interoperable across clients.
+---
+
 # Cosign Integration
 
 Like [sigstore-java](https://github.com/sigstore/sigstore-java) and [sigstore-python](https://github.com/sigstore/sigstore-python), sigstore-dotnet focuses on **artifact signing and verification**. Container image signing is handled by [cosign](https://github.com/sigstore/cosign) — the bundles are fully interoperable.

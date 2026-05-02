@@ -1,3 +1,8 @@
+---
+title: Getting Started with sigstore-dotnet
+description: Install Sigstore.Net, sign your first artifact, and verify a bundle. Covers DI registration, IOptions configuration, and the minimum code to sign or verify in .NET.
+---
+
 # Getting Started
 
 ## Installation

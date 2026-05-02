@@ -1,3 +1,8 @@
+---
+title: Articles — guides and references for sigstore-dotnet
+description: In-depth guides for using and understanding sigstore-dotnet — introduction to Sigstore, getting started, cosign integration, and architecture.
+---
+
 # Articles
 
 In-depth guides for using and understanding sigstore-dotnet.

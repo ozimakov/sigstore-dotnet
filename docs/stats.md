@@ -1,3 +1,8 @@
+---
+title: Stats — downloads, stars, releases, security
+description: Live metrics on sigstore-dotnet — NuGet downloads, GitHub stars, release cadence, OpenSSF Scorecard, code coverage, and CI status.
+---
+
 Live metrics on package adoption, repository activity, and community interest. All badges and charts refresh automatically.
 
 ## Package downloads

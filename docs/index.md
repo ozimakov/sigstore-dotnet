@@ -1,5 +1,7 @@
 ---
 _layout: landing
+title: sigstore-dotnet — Managed .NET client for Sigstore signing and verification
+description: Pure managed .NET client library for Sigstore bundle signing and verification. No native binaries, no unsafe code. .NET 8/9/10. Cross-client interoperable with cosign and sigstore-python. 132/132 conformance tests passing.
 ---
 
 # sigstore-dotnet

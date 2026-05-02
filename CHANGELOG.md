@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-05-02
+
+### Changed
+
+- README cleanup so nuget.org displays the current text: removed the outdated "Status: v1.0 — stable" banner and the Codecov badge. Coverage tracking on codecov.io continues to run from CI; only the public banner is gone.
+- Conformance workflow retries once on transient Sigstore Public Good infra failures (Fulcio/Rekor/TUF), so an upstream blip no longer paints the badge red.
+
 ## [1.0.2] — 2026-05-01
 
 ### Added

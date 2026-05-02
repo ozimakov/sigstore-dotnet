@@ -16,5 +16,6 @@ coverage:
 ignore:
   - "src/Sigstore/Protos"
   - "**/Protos/**"
+  - "**/obj/**"
   - "src/Sigstore.Conformance/**"
   - "tests/**"
